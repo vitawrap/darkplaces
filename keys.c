@@ -686,9 +686,369 @@ Key_ClearEditLine (int edit_line)
 Interactive line editing and console scrollback
 ====================
 */
-static void
-Key_Console (cmd_state_t *cmd, int key, int unicode)
+
+int chat_mode; // 0 for say, 1 for say_team, -1 for command
+char chat_buffer[MAX_INPUTLINE];
+unsigned int chat_bufferlen = 0;
+int chat_bufferpos = 0;
+
+// returns -1 if no key has been recognized
+// returns linepos (>= 0) otherwise
+// if is_console is true can modify key_line (doesn't change key_linepos)
+int Key_Parse_CommonKeys(cmd_state_t *cmd, qboolean is_console, int key, int unicode)
 {
+	char *line;
+	int linepos;
+	if (is_console)
+	{
+		line = key_line;
+		linepos = key_linepos;
+	}
+	else
+	{
+		line = chat_buffer;
+		linepos = chat_bufferpos;
+		// not implemented yet
+		return false;
+	}
+
+	if ((key == 'v' && KM_CTRL) || ((key == K_INS || key == K_KP_INS) && KM_SHIFT))
+	{
+		char *cbd, *p;
+		if ((cbd = Sys_GetClipboardData()) != 0)
+		{
+			int i;
+#if 1
+			p = cbd;
+			while (*p)
+			{
+				if (*p == '\r' && *(p+1) == '\n')
+				{
+					*p++ = ';';
+					*p++ = ' ';
+				}
+				else if (*p == '\n' || *p == '\r' || *p == '\b')
+					*p++ = ';';
+				p++;
+			}
+#else
+			strtok(cbd, "\n\r\b");
+#endif
+			i = (int)strlen(cbd);
+			if (i + linepos >= MAX_INPUTLINE)
+				i= MAX_INPUTLINE - linepos - 1;
+			if (i > 0)
+			{
+				cbd[i] = 0;
+				memmove(line + linepos + i, line + linepos, sizeof(line) - linepos - i);
+				memcpy(line + linepos, cbd, i);
+				linepos += i;
+			}
+			Z_Free(cbd);
+		}
+		return linepos;
+	}
+
+	if (key == 'u' && KM_CTRL) // like vi/readline ^u: delete currently edited line
+	{
+		// clear line
+		line[0] = ']';
+		line[1] = 0;
+		linepos = 1;
+		return linepos;
+	}
+
+	if ((key == K_ENTER || key == K_KP_ENTER) && KM_NONE)
+	{
+		Cbuf_AddText (cmd, line+1);	// skip the ]
+		Cbuf_AddText (cmd, "\n");
+		Key_History_Push();
+		line[0] = ']';
+		line[1] = 0;	// EvilTypeGuy: null terminate
+		linepos = 1;
+		// force an update, because the command may take some time
+		if (cls.state == ca_disconnected)
+			CL_UpdateScreen ();
+		return linepos;
+	}
+
+	if (key == K_TAB)
+	{
+		if (KM_CTRL) // append the cvar value to the cvar name
+		{
+			int		cvar_len, cvar_str_len, chars_to_move;
+			char	k;
+			char	cvar[MAX_INPUTLINE];
+			const char *cvar_str;
+
+			// go to the start of the variable
+			while(--linepos)
+			{
+				k = line[linepos];
+				if(k == '\"' || k == ';' || k == ' ' || k == '\'')
+					break;
+			}
+			linepos++;
+
+			// save the variable name in cvar
+			for(cvar_len=0; (k = line[linepos + cvar_len]) != 0; cvar_len++)
+			{
+				if(k == '\"' || k == ';' || k == ' ' || k == '\'')
+					break;
+				cvar[cvar_len] = k;
+			}
+			if (cvar_len==0)
+				return linepos;
+			cvar[cvar_len] = 0;
+
+			// go to the end of the cvar
+			linepos += cvar_len;
+
+			// save the content of the variable in cvar_str
+			cvar_str = Cvar_VariableString(&cvars_all, cvar, CVAR_CLIENT | CVAR_SERVER);
+			cvar_str_len = (int)strlen(cvar_str);
+			if (cvar_str_len==0)
+				return linepos;
+
+			// insert space and cvar_str in line
+			chars_to_move = (int)strlen(&line[linepos]);
+			if (linepos + 1 + cvar_str_len + chars_to_move < MAX_INPUTLINE)
+			{
+				if (chars_to_move)
+					memmove(&line[linepos + 1 + cvar_str_len], &line[linepos], chars_to_move);
+				line[linepos++] = ' ';
+				memcpy(&line[linepos], cvar_str, cvar_str_len);
+				linepos += cvar_str_len;
+				line[linepos + chars_to_move] = 0;
+			}
+			else
+				Con_Printf("Couldn't append cvar value, edit line too long.\n");
+			return linepos;
+		}
+
+		if (KM_NONE)
+		{
+			// Enhanced command completion
+			// by EvilTypeGuy eviltypeguy@qeradiant.com
+			// Thanks to Fett, Taniwha
+			Con_CompleteCommandLine(cmd);
+			return linepos;
+		}
+	}
+
+	// Advanced Console Editing by Radix radix@planetquake.com
+	// Added/Modified by EvilTypeGuy eviltypeguy@qeradiant.com
+	// Enhanced by [515]
+	// Enhanced by terencehill
+
+	// move cursor to the previous character
+	if (key == K_LEFTARROW || key == K_KP_LEFTARROW)
+	{
+		if(KM_CTRL) // move cursor to the previous word
+		{
+			int		pos;
+			char	k;
+			if (linepos < 2)
+				return linepos;
+			pos = linepos-1;
+
+			if(pos) // skip all "; ' after the word
+				while(--pos)
+				{
+					k = line[pos];
+					if (!(k == '\"' || k == ';' || k == ' ' || k == '\''))
+						break;
+				}
+
+			if(pos)
+				while(--pos)
+				{
+					k = line[pos];
+					if(k == '\"' || k == ';' || k == ' ' || k == '\'')
+						break;
+				}
+			linepos = pos + 1;
+			return linepos;
+		}
+
+		if(KM_SHIFT) // move cursor to the previous character ignoring colors
+		{
+			int		pos;
+			size_t          inchar = 0;
+			if (linepos < 2)
+				return linepos;
+			pos = (int)u8_prevbyte(line+1, linepos-1) + 1; // do NOT give the ']' to u8_prevbyte
+			while (pos)
+				if(pos-1 > 0 && line[pos-1] == STRING_COLOR_TAG && isdigit(line[pos]))
+					pos-=2;
+				else if(pos-4 > 0 && line[pos-4] == STRING_COLOR_TAG && line[pos-3] == STRING_COLOR_RGB_TAG_CHAR
+						&& isxdigit(line[pos-2]) && isxdigit(line[pos-1]) && isxdigit(line[pos]))
+					pos-=5;
+				else
+				{
+					if(pos-1 > 0 && line[pos-1] == STRING_COLOR_TAG && line[pos] == STRING_COLOR_TAG) // consider ^^ as a character
+						pos--;
+					pos--;
+					break;
+				}
+			// we need to move to the beginning of the character when in a wide character:
+			u8_charidx(line, pos + 1, &inchar);
+			linepos = (int)(pos + 1 - inchar);
+			return linepos;
+		}
+
+		if(KM_NONE)
+		{
+			if (linepos < 2)
+				return linepos;
+			linepos = (int)u8_prevbyte(line+1, linepos-1) + 1; // do NOT give the ']' to u8_prevbyte
+			return linepos;
+		}
+	}
+
+	// delete char before cursor
+	if ((key == K_BACKSPACE && KM_NONE) || (key == 'h' && KM_CTRL))
+	{
+		if (linepos > 1)
+		{
+			int newpos = (int)u8_prevbyte(line+1, linepos-1) + 1; // do NOT give the ']' to u8_prevbyte
+			strlcpy(line + newpos, line + linepos, sizeof(line) + 1 - linepos);
+			linepos = newpos;
+		}
+		return linepos;
+	}
+
+	// delete char on cursor
+	if ((key == K_DEL || key == K_KP_DEL) && KM_NONE)
+	{
+		size_t linelen;
+		linelen = strlen(line);
+		if (linepos < (int)linelen)
+			memmove(line + linepos, line + linepos + u8_bytelen(line + linepos, 1), linelen - linepos);
+		return linepos;
+	}
+
+	// move cursor to the next character
+	if (key == K_RIGHTARROW || key == K_KP_RIGHTARROW)
+	{
+		if (KM_CTRL) // move cursor to the next word
+		{
+			int		pos, len;
+			char	k;
+			len = (int)strlen(line);
+			if (linepos >= len)
+				return linepos;
+			pos = linepos;
+
+			while(++pos < len)
+			{
+				k = line[pos];
+				if(k == '\"' || k == ';' || k == ' ' || k == '\'')
+					break;
+			}
+
+			if (pos < len) // skip all "; ' after the word
+				while(++pos < len)
+				{
+					k = line[pos];
+					if (!(k == '\"' || k == ';' || k == ' ' || k == '\''))
+						break;
+				}
+			linepos = pos;
+			return linepos;
+		}
+
+		if (KM_SHIFT) // move cursor to the next character ignoring colors
+		{
+			int		pos, len;
+			len = (int)strlen(line);
+			if (linepos >= len)
+				return linepos;
+			pos = linepos;
+
+			// go beyond all initial consecutive color tags, if any
+			if(pos < len)
+				while (line[pos] == STRING_COLOR_TAG)
+				{
+					if(isdigit(line[pos+1]))
+						pos+=2;
+					else if(line[pos+1] == STRING_COLOR_RGB_TAG_CHAR && isxdigit(line[pos+2]) && isxdigit(line[pos+3]) && isxdigit(line[pos+4]))
+						pos+=5;
+					else
+						break;
+				}
+
+			// skip the char
+			if (line[pos] == STRING_COLOR_TAG && line[pos+1] == STRING_COLOR_TAG) // consider ^^ as a character
+				pos++;
+			pos += (int)u8_bytelen(line + pos, 1);
+
+			// now go beyond all next consecutive color tags, if any
+			if(pos < len)
+				while (line[pos] == STRING_COLOR_TAG)
+				{
+					if(isdigit(line[pos+1]))
+						pos+=2;
+					else if(line[pos+1] == STRING_COLOR_RGB_TAG_CHAR && isxdigit(line[pos+2]) && isxdigit(line[pos+3]) && isxdigit(line[pos+4]))
+						pos+=5;
+					else
+						break;
+				}
+			linepos = pos;
+			return linepos;
+		}
+
+		if (KM_NONE)
+		{
+			if (linepos >= (int)strlen(line))
+				return linepos;
+			linepos += (int)u8_bytelen(line + linepos, 1);
+			return linepos;
+		}
+	}
+
+	if ((key == K_INS || key == K_KP_INS) && KM_NONE) // toggle insert mode
+	{
+		key_insert ^= 1;
+		return linepos;
+	}
+
+	if (key == K_HOME || key == K_KP_HOME)
+	{
+		if (is_console && KM_CTRL)
+		{
+			con_backscroll = CON_TEXTSIZE;
+			return linepos;
+		}
+		if (KM_NONE)
+		{
+			linepos = 1;
+			return linepos;
+		}
+	}
+
+	if (key == K_END || key == K_KP_END)
+	{
+		if (is_console && KM_CTRL)
+		{
+			con_backscroll = 0;
+			return linepos;
+		}
+		if (KM_NONE)
+		{
+			linepos = (int)strlen(line);
+			return linepos;
+		}
+	}
+
+	return -1;
+}
+
+static void
+Key_Console(cmd_state_t *cmd, int key, int unicode)
+{
+	int linepos;
+
 	// LadyHavoc: copied most of this from Q2 to improve keyboard handling
 	switch (key)
 	{
@@ -715,55 +1075,16 @@ Key_Console (cmd_state_t *cmd, int key, int unicode)
 	if (keydown[K_CTRL] && keydown[K_ALT])
 		goto add_char;
 
-	if ((key == 'v' && KM_CTRL) || ((key == K_INS || key == K_KP_INS) && KM_SHIFT))
+	linepos = Key_Parse_CommonKeys(cmd, true, key, unicode);
+	if (linepos >= 0)
 	{
-		char *cbd, *p;
-		if ((cbd = Sys_GetClipboardData()) != 0)
-		{
-			int i;
-#if 1
-			p = cbd;
-			while (*p)
-			{
-				if (*p == '\r' && *(p+1) == '\n')
-				{
-					*p++ = ';';
-					*p++ = ' ';
-				}
-				else if (*p == '\n' || *p == '\r' || *p == '\b')
-					*p++ = ';';
-				p++;
-			}
-#else
-			strtok(cbd, "\n\r\b");
-#endif
-			i = (int)strlen(cbd);
-			if (i + key_linepos >= MAX_INPUTLINE)
-				i= MAX_INPUTLINE - key_linepos - 1;
-			if (i > 0)
-			{
-				cbd[i] = 0;
-				memmove(key_line + key_linepos + i, key_line + key_linepos, sizeof(key_line) - key_linepos - i);
-				memcpy(key_line + key_linepos, cbd, i);
-				key_linepos += i;
-			}
-			Z_Free(cbd);
-		}
+		key_linepos = linepos;
 		return;
 	}
 
 	if (key == 'l' && KM_CTRL)
 	{
 		Cbuf_AddText (cmd, "clear\n");
-		return;
-	}
-
-	if (key == 'u' && KM_CTRL) // like vi/readline ^u: delete currently edited line
-	{
-		// clear line
-		key_line[0] = ']';
-		key_line[1] = 0;
-		key_linepos = 1;
 		return;
 	}
 
@@ -774,262 +1095,6 @@ Key_Console (cmd_state_t *cmd, int key, int unicode)
 		key_line[0] = ']';
 		key_line[1] = 0;
 		key_linepos = 1;
-		return;
-	}
-
-	if ((key == K_ENTER || key == K_KP_ENTER) && KM_NONE)
-	{
-		Cbuf_AddText (cmd, key_line+1);	// skip the ]
-		Cbuf_AddText (cmd, "\n");
-		Key_History_Push();
-		key_line[0] = ']';
-		key_line[1] = 0;	// EvilTypeGuy: null terminate
-		key_linepos = 1;
-		// force an update, because the command may take some time
-		if (cls.state == ca_disconnected)
-			CL_UpdateScreen ();
-		return;
-	}
-
-	if (key == K_TAB)
-	{
-		if (KM_CTRL) // append the cvar value to the cvar name
-		{
-			int		cvar_len, cvar_str_len, chars_to_move;
-			char	k;
-			char	cvar[MAX_INPUTLINE];
-			const char *cvar_str;
-			
-			// go to the start of the variable
-			while(--key_linepos)
-			{
-				k = key_line[key_linepos];
-				if(k == '\"' || k == ';' || k == ' ' || k == '\'')
-					break;
-			}
-			key_linepos++;
-			
-			// save the variable name in cvar
-			for(cvar_len=0; (k = key_line[key_linepos + cvar_len]) != 0; cvar_len++)
-			{
-				if(k == '\"' || k == ';' || k == ' ' || k == '\'')
-					break;
-				cvar[cvar_len] = k;
-			}
-			if (cvar_len==0)
-				return;
-			cvar[cvar_len] = 0;
-			
-			// go to the end of the cvar
-			key_linepos += cvar_len;
-			
-			// save the content of the variable in cvar_str
-			cvar_str = Cvar_VariableString(&cvars_all, cvar, CVAR_CLIENT | CVAR_SERVER);
-			cvar_str_len = (int)strlen(cvar_str);
-			if (cvar_str_len==0)
-				return;
-			
-			// insert space and cvar_str in key_line
-			chars_to_move = (int)strlen(&key_line[key_linepos]);
-			if (key_linepos + 1 + cvar_str_len + chars_to_move < MAX_INPUTLINE)
-			{
-				if (chars_to_move)
-					memmove(&key_line[key_linepos + 1 + cvar_str_len], &key_line[key_linepos], chars_to_move);
-				key_line[key_linepos++] = ' ';
-				memcpy(&key_line[key_linepos], cvar_str, cvar_str_len);
-				key_linepos += cvar_str_len;
-				key_line[key_linepos + chars_to_move] = 0;
-			}
-			else
-				Con_Printf("Couldn't append cvar value, edit line too long.\n");
-			return;
-		}
-
-		if (KM_NONE)
-		{
-			// Enhanced command completion
-			// by EvilTypeGuy eviltypeguy@qeradiant.com
-			// Thanks to Fett, Taniwha
-			Con_CompleteCommandLine(cmd);
-			return;
-		}
-	}
-
-	// Advanced Console Editing by Radix radix@planetquake.com
-	// Added/Modified by EvilTypeGuy eviltypeguy@qeradiant.com
-	// Enhanced by [515]
-	// Enhanced by terencehill
-
-	// move cursor to the previous character
-	if (key == K_LEFTARROW || key == K_KP_LEFTARROW)
-	{
-		if(KM_CTRL) // move cursor to the previous word
-		{
-			int		pos;
-			char	k;
-			if (key_linepos < 2)
-				return;
-			pos = key_linepos-1;
-
-			if(pos) // skip all "; ' after the word
-				while(--pos)
-				{
-					k = key_line[pos];
-					if (!(k == '\"' || k == ';' || k == ' ' || k == '\''))
-						break;
-				}
-
-			if(pos)
-				while(--pos)
-				{
-					k = key_line[pos];
-					if(k == '\"' || k == ';' || k == ' ' || k == '\'')
-						break;
-				}
-			key_linepos = pos + 1;
-			return;
-		}
-
-		if(KM_SHIFT) // move cursor to the previous character ignoring colors
-		{
-			int		pos;
-			size_t          inchar = 0;
-			if (key_linepos < 2)
-				return;
-			pos = (int)u8_prevbyte(key_line+1, key_linepos-1) + 1; // do NOT give the ']' to u8_prevbyte
-			while (pos)
-				if(pos-1 > 0 && key_line[pos-1] == STRING_COLOR_TAG && isdigit(key_line[pos]))
-					pos-=2;
-				else if(pos-4 > 0 && key_line[pos-4] == STRING_COLOR_TAG && key_line[pos-3] == STRING_COLOR_RGB_TAG_CHAR
-						&& isxdigit(key_line[pos-2]) && isxdigit(key_line[pos-1]) && isxdigit(key_line[pos]))
-					pos-=5;
-				else
-				{
-					if(pos-1 > 0 && key_line[pos-1] == STRING_COLOR_TAG && key_line[pos] == STRING_COLOR_TAG) // consider ^^ as a character
-						pos--;
-					pos--;
-					break;
-				}
-			// we need to move to the beginning of the character when in a wide character:
-			u8_charidx(key_line, pos + 1, &inchar);
-			key_linepos = (int)(pos + 1 - inchar);
-			return;
-		}
-
-		if(KM_NONE)
-		{
-			if (key_linepos < 2)
-				return;
-			key_linepos = (int)u8_prevbyte(key_line+1, key_linepos-1) + 1; // do NOT give the ']' to u8_prevbyte
-			return;
-		}
-	}
-
-	// delete char before cursor
-	if ((key == K_BACKSPACE && KM_NONE) || (key == 'h' && KM_CTRL))
-	{
-		if (key_linepos > 1)
-		{
-			int newpos = (int)u8_prevbyte(key_line+1, key_linepos-1) + 1; // do NOT give the ']' to u8_prevbyte
-			strlcpy(key_line + newpos, key_line + key_linepos, sizeof(key_line) + 1 - key_linepos);
-			key_linepos = newpos;
-		}
-		return;
-	}
-
-	// delete char on cursor
-	if ((key == K_DEL || key == K_KP_DEL) && KM_NONE)
-	{
-		size_t linelen;
-		linelen = strlen(key_line);
-		if (key_linepos < (int)linelen)
-			memmove(key_line + key_linepos, key_line + key_linepos + u8_bytelen(key_line + key_linepos, 1), linelen - key_linepos);
-		return;
-	}
-
-
-	// move cursor to the next character
-	if (key == K_RIGHTARROW || key == K_KP_RIGHTARROW)
-	{
-		if (KM_CTRL) // move cursor to the next word
-		{
-			int		pos, len;
-			char	k;
-			len = (int)strlen(key_line);
-			if (key_linepos >= len)
-				return;
-			pos = key_linepos;
-
-			while(++pos < len)
-			{
-				k = key_line[pos];
-				if(k == '\"' || k == ';' || k == ' ' || k == '\'')
-					break;
-			}
-			
-			if (pos < len) // skip all "; ' after the word
-				while(++pos < len)
-				{
-					k = key_line[pos];
-					if (!(k == '\"' || k == ';' || k == ' ' || k == '\''))
-						break;
-				}
-			key_linepos = pos;
-			return;
-		}
-
-		if (KM_SHIFT) // move cursor to the next character ignoring colors
-		{
-			int		pos, len;
-			len = (int)strlen(key_line);
-			if (key_linepos >= len)
-				return;
-			pos = key_linepos;
-			
-			// go beyond all initial consecutive color tags, if any
-			if(pos < len)
-				while (key_line[pos] == STRING_COLOR_TAG)
-				{
-					if(isdigit(key_line[pos+1]))
-						pos+=2;
-					else if(key_line[pos+1] == STRING_COLOR_RGB_TAG_CHAR && isxdigit(key_line[pos+2]) && isxdigit(key_line[pos+3]) && isxdigit(key_line[pos+4]))
-						pos+=5;
-					else
-						break;
-				}
-			
-			// skip the char
-			if (key_line[pos] == STRING_COLOR_TAG && key_line[pos+1] == STRING_COLOR_TAG) // consider ^^ as a character
-				pos++;
-			pos += (int)u8_bytelen(key_line + pos, 1);
-			
-			// now go beyond all next consecutive color tags, if any
-			if(pos < len)
-				while (key_line[pos] == STRING_COLOR_TAG)
-				{
-					if(isdigit(key_line[pos+1]))
-						pos+=2;
-					else if(key_line[pos+1] == STRING_COLOR_RGB_TAG_CHAR && isxdigit(key_line[pos+2]) && isxdigit(key_line[pos+3]) && isxdigit(key_line[pos+4]))
-						pos+=5;
-					else
-						break;
-				}
-			key_linepos = pos;
-			return;
-		}
-
-		if (KM_NONE)
-		{
-			if (key_linepos >= (int)strlen(key_line))
-				return;
-			key_linepos += (int)u8_bytelen(key_line + key_linepos, 1);
-			return;
-		}
-	}
-
-	if ((key == K_INS || key == K_KP_INS) && KM_NONE) // toggle insert mode
-	{
-		key_insert ^= 1;
 		return;
 	}
 
@@ -1172,34 +1237,6 @@ Key_Console (cmd_state_t *cmd, int key, int unicode)
 		}
 	}
 
-	if (key == K_HOME || key == K_KP_HOME)
-	{
-		if (KM_CTRL)
-		{
-			con_backscroll = CON_TEXTSIZE;
-			return;
-		}
-		if (KM_NONE)
-		{
-			key_linepos = 1;
-			return;
-		}
-	}
-
-	if (key == K_END || key == K_KP_END)
-	{
-		if (KM_CTRL)
-		{
-			con_backscroll = 0;
-			return;
-		}
-		if (KM_NONE)
-		{
-			key_linepos = (int)strlen(key_line);
-			return;
-		}
-	}
-
 add_char:
 
 	// non printable
@@ -1237,10 +1274,6 @@ add_char:
 }
 
 //============================================================================
-
-int chat_mode;
-char		chat_buffer[MAX_INPUTLINE];
-unsigned int	chat_bufferlen = 0;
 
 static void
 Key_Message (cmd_state_t *cmd, int key, int ascii)
