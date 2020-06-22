@@ -762,18 +762,6 @@ int Key_Parse_CommonKeys(cmd_state_t *cmd, qboolean is_console, int key, int uni
 		return linepos;
 	}
 
-	if ((key == K_ENTER || key == K_KP_ENTER) && KM_NONE)
-	{
-		Cbuf_AddText (cmd, line+1);	// skip the ]
-		Cbuf_AddText (cmd, "\n");
-		Key_History_Push();
-		linepos = Key_ClearEditLine(true);
-		// force an update, because the command may take some time
-		if (cls.state == ca_disconnected)
-			CL_UpdateScreen ();
-		return linepos;
-	}
-
 	if (key == K_TAB)
 	{
 		if (KM_CTRL) // append the cvar value to the cvar name
@@ -1082,6 +1070,18 @@ Key_Console(cmd_state_t *cmd, int key, int unicode)
 	{
 		key_linepos = linepos;
 		return;
+	}
+
+	if ((key == K_ENTER || key == K_KP_ENTER) && KM_NONE)
+	{
+		Cbuf_AddText (cmd, key_line+1);	// skip the ]
+		Cbuf_AddText (cmd, "\n");
+		Key_History_Push();
+		key_linepos = Key_ClearEditLine(true);
+		// force an update, because the command may take some time
+		if (cls.state == ca_disconnected)
+			CL_UpdateScreen ();
+		return key_linepos;
 	}
 
 	if (key == 'l' && KM_CTRL)
