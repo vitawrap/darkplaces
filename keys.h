@@ -372,7 +372,7 @@ extern char chat_buffer[MAX_INPUTLINE];
 extern int	chat_bufferpos;
 extern unsigned int chat_bufferlen;
 
-void Key_ClearEditLine(int edit_line);
+unsigned int Key_ClearEditLine(qboolean is_console);
 void Key_WriteBindings(qfile_t *f);
 void Key_Init(void);
 void Key_Shutdown(void);

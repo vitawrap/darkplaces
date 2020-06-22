@@ -663,12 +663,19 @@ static const keyname_t   keynames[] = {
 ==============================================================================
 */
 
-void
-Key_ClearEditLine (int edit_line)
+unsigned int Key_ClearEditLine(qboolean is_console)
 {
-	memset (key_line, '\0', sizeof(key_line));
-	key_line[0] = ']';
-	key_linepos = 1;
+	if (is_console)
+	{
+		key_line[0] = ']';
+		key_line[1] = 0;
+		return 1;
+	}
+	else
+	{
+		chat_buffer[0] = 0;
+		return 0;
+	}
 }
 
 // key modifier states
@@ -751,10 +758,7 @@ int Key_Parse_CommonKeys(cmd_state_t *cmd, qboolean is_console, int key, int uni
 
 	if (key == 'u' && KM_CTRL) // like vi/readline ^u: delete currently edited line
 	{
-		// clear line
-		line[0] = ']';
-		line[1] = 0;
-		linepos = 1;
+		linepos = Key_ClearEditLine(true);
 		return linepos;
 	}
 
@@ -763,9 +767,7 @@ int Key_Parse_CommonKeys(cmd_state_t *cmd, qboolean is_console, int key, int uni
 		Cbuf_AddText (cmd, line+1);	// skip the ]
 		Cbuf_AddText (cmd, "\n");
 		Key_History_Push();
-		line[0] = ']';
-		line[1] = 0;	// EvilTypeGuy: null terminate
-		linepos = 1;
+		linepos = Key_ClearEditLine(true);
 		// force an update, because the command may take some time
 		if (cls.state == ca_disconnected)
 			CL_UpdateScreen ();
@@ -1092,9 +1094,7 @@ Key_Console(cmd_state_t *cmd, int key, int unicode)
 	{
 		// clear line
 		Key_History_Push();
-		key_line[0] = ']';
-		key_line[1] = 0;
-		key_linepos = 1;
+		key_linepos = Key_ClearEditLine(true);
 		return;
 	}
 
@@ -1699,9 +1699,7 @@ void
 Key_Init (void)
 {
 	Key_History_Init();
-	key_line[0] = ']';
-	key_line[1] = 0;
-	key_linepos = 1;
+	key_linepos = Key_ClearEditLine(true);
 
 //
 // register our functions
