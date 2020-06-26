@@ -2456,8 +2456,7 @@ static int Nicks_CompleteCountPossible(char *line, int pos, char *s, qboolean is
 		{
 			if(spos > 0 && line[spos-1] != ' ' && line[spos-1] != ';' && line[spos-1] != '\"' && line[spos-1] != '\'')
 			{
-				if(!(isCon && line[spos-1] == ']' && spos == 1) && // console start
-				   !(spos > 1 && line[spos-1] >= '0' && line[spos-1] <= '9' && line[spos-2] == STRING_COLOR_TAG)) // color start
+				if(!(isCon && spos == 1)) // console start
 				{
 					--spos;
 					continue;
