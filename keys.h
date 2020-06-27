@@ -370,9 +370,8 @@ extern	char		*keybindings[MAX_BINDMAPS][MAX_KEYS];
 extern int chat_mode; // 0 for say, 1 for say_team, -1 for command
 extern char chat_buffer[MAX_INPUTLINE];
 extern int	chat_bufferpos;
-extern unsigned int chat_bufferlen;
 
-unsigned int Key_ClearEditLine(qboolean is_console);
+int Key_ClearEditLine(qboolean is_console);
 void Key_WriteBindings(qfile_t *f);
 void Key_Init(void);
 void Key_Shutdown(void);
@@ -382,7 +381,7 @@ void Key_ReleaseAll (void);
 void Key_ReleaseAll_f(cmd_state_t *cmd);
 void Key_EventQueue_Block(void);
 void Key_EventQueue_Unblock(void);
-
+int Key_AddChar(int unicode, qboolean is_console);
 int Key_Parse_CommonKeys(cmd_state_t *cmd, qboolean is_console, int key, int unicode);
 
 qboolean Key_SetBinding (int keynum, int bindmap, const char *binding);
