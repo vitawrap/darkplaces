@@ -715,7 +715,6 @@ PRVM_ED_Write
 For savegames
 =============
 */
-extern cvar_t developer_entityparsing;
 void PRVM_ED_Write (prvm_prog_t *prog, qfile_t *f, prvm_edict_t *ed)
 {
 	ddef_t	*d;
@@ -2392,7 +2391,9 @@ void PRVM_Prog_Load(prvm_prog_t *prog, const char * filename, unsigned char * da
 			if(!cvar)
 			{
 				const char *value;
-				char buf[64];
+				char buf[128];
+				int prec[3];
+				float f;
 				Con_DPrintf("PRVM_LoadProgs: no cvar for autocvar global %s in %s, creating...\n", name, prog->name);
 				switch(prog->globaldefs[i].type & ~DEF_SAVEGLOBAL)
 				{
@@ -2400,11 +2401,33 @@ void PRVM_Prog_Load(prvm_prog_t *prog, const char * filename, unsigned char * da
 						if((float)((int)(val->_float)) == val->_float)
 							dpsnprintf(buf, sizeof(buf), "%i", (int)(val->_float));
 						else
-							dpsnprintf(buf, sizeof(buf), "%.9g", val->_float);
+						{
+							// ftos_slow
+							f = val->_float;
+							for (int precision = 7; precision <= 9; ++precision) {
+								dpsnprintf(buf, sizeof(buf), "%.*g", precision, f);
+								if ((float)atof(buf) == f) {
+									break;
+								}
+							}
+						}
 						value = buf;
 						break;
 					case ev_vector:
-						dpsnprintf(buf, sizeof(buf), "%.9g %.9g %.9g", val->vector[0], val->vector[1], val->vector[2]); value = buf;
+						for (i = 0; i < 3; ++i)
+						{
+							prec[i] = 9;
+							f = val->vector[i];
+							for (int precision = 7; precision <= 9; ++precision) {
+								dpsnprintf(buf, sizeof(buf), "%.*g", precision, f);
+								if ((float)atof(buf) == f) {
+									prec[i] = precision;
+									break;
+								}
+							}
+						}
+						dpsnprintf(buf, sizeof(buf), "%.*g %.*g %.*g", prec[0], val->vector[0], prec[1], val->vector[1], prec[2], val->vector[2]);
+						value = buf;
 						break;
 					case ev_string:
 						value = PRVM_GetString(prog, val->string);
@@ -2720,7 +2743,7 @@ void PRVM_Breakpoint(prvm_prog_t *prog, int stack_index, const char *text)
 	Con_Printf("PRVM_Breakpoint: %s\n", text);
 	PRVM_PrintState(prog, stack_index);
 	if (prvm_breakpointdump.integer)
-		Host_Savegame_to(prog, va(vabuf, sizeof(vabuf), "breakpoint-%s.dmp", prog->name));
+		SV_Savegame_to(prog, va(vabuf, sizeof(vabuf), "breakpoint-%s.dmp", prog->name));
 }
 
 void PRVM_Watchpoint(prvm_prog_t *prog, int stack_index, const char *text, etype_t type, prvm_eval_t *o, prvm_eval_t *n)
