@@ -1074,29 +1074,35 @@ int Key_Parse_CommonKeys(cmd_state_t *cmd, qboolean is_console, int key, int uni
 	return -1;
 }
 
+static int Key_Convert_NumPadKey(int key)
+{
+	// LadyHavoc: copied most of this from Q2 to improve keyboard handling
+	switch (key)
+	{
+		case K_KP_SLASH:      return '/';
+		case K_KP_MINUS:      return '-';
+		case K_KP_PLUS:       return '+';
+		case K_KP_HOME:       return '7';
+		case K_KP_UPARROW:    return '8';
+		case K_KP_PGUP:       return '9';
+		case K_KP_LEFTARROW:  return '4';
+		case K_KP_5:          return '5';
+		case K_KP_RIGHTARROW: return '6';
+		case K_KP_END:        return '1';
+		case K_KP_DOWNARROW:  return '2';
+		case K_KP_PGDN:       return '3';
+		case K_KP_INS:        return '0';
+		case K_KP_DEL:        return '.';
+	}
+	return key;
+}
+
 static void
 Key_Console(cmd_state_t *cmd, int key, int unicode)
 {
 	int linepos;
 
-	// LadyHavoc: copied most of this from Q2 to improve keyboard handling
-	switch (key)
-	{
-		case K_KP_SLASH:      key = '/'; break;
-		case K_KP_MINUS:      key = '-'; break;
-		case K_KP_PLUS:       key = '+'; break;
-		case K_KP_HOME:       key = '7'; break;
-		case K_KP_UPARROW:    key = '8'; break;
-		case K_KP_PGUP:       key = '9'; break;
-		case K_KP_LEFTARROW:  key = '4'; break;
-		case K_KP_5:          key = '5'; break;
-		case K_KP_RIGHTARROW: key = '6'; break;
-		case K_KP_END:        key = '1'; break;
-		case K_KP_DOWNARROW:  key = '2'; break;
-		case K_KP_PGDN:       key = '3'; break;
-		case K_KP_INS:        key = '0'; break;
-		case K_KP_DEL:        key = '.'; break;
-	}
+	key = Key_Convert_NumPadKey(key);
 
 	// Forbid Ctrl Alt shortcuts since on Windows they are used to type some characters
 	// in certain non-English keyboards using the AltGr key (which emulates Ctrl Alt)
@@ -1293,6 +1299,9 @@ Key_Message (cmd_state_t *cmd, int key, int ascii)
 {
 	int linepos;
 	char vabuf[1024];
+
+	key = Key_Convert_NumPadKey(key);
+
 	if (key == K_ENTER || key == K_KP_ENTER || ascii == 10 || ascii == 13)
 	{
 		if(chat_mode < 0)
