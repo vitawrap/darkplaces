@@ -804,8 +804,7 @@ int Key_Parse_CommonKeys(cmd_state_t *cmd, qboolean is_console, int key, int uni
 
 	if (key == 'u' && KM_CTRL) // like vi/readline ^u: delete currently edited line
 	{
-		linepos = Key_ClearEditLine(is_console);
-		return linepos;
+		return Key_ClearEditLine(is_console);
 	}
 
 	if (key == K_TAB)
@@ -862,17 +861,8 @@ int Key_Parse_CommonKeys(cmd_state_t *cmd, qboolean is_console, int key, int uni
 			return linepos;
 		}
 
-		if (is_console && KM_NONE)
-		{
-			key_linepos = Con_CompleteCommandLine(cmd, true);
-			return key_linepos;
-		}
-
-		if (!is_console && KM_NONE)
-		{
-			chat_bufferpos = Con_CompleteCommandLine(cmd, false);
-			return chat_bufferpos;
-		}
+		if (KM_NONE)
+			return Con_CompleteCommandLine(cmd, is_console);
 	}
 
 	// Advanced Console Editing by Radix radix@planetquake.com
@@ -1067,10 +1057,7 @@ int Key_Parse_CommonKeys(cmd_state_t *cmd, qboolean is_console, int key, int uni
 			return linepos;
 		}
 		if (KM_NONE)
-		{
-			linepos = 1;
-			return linepos;
-		}
+			return linestart;
 	}
 
 	if (key == K_END || key == K_KP_END)
@@ -1081,10 +1068,7 @@ int Key_Parse_CommonKeys(cmd_state_t *cmd, qboolean is_console, int key, int uni
 			return linepos;
 		}
 		if (KM_NONE)
-		{
-			linepos = (int)strlen(line);
-			return linepos;
-		}
+			return (int)strlen(line);
 	}
 
 	return -1;
