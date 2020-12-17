@@ -301,7 +301,7 @@
 "void main(void)\n",
 "{\n",
 "	float fringe = ColorFringe;//.0033f;\n",
-"	if (fringe) {\n",
+"	if ((fringe < 0) || (fringe > 0) {\n",
 "		float amount = distance(TexCoord1, vec2(.5f,.5f));\n",
 "		vec2 offset = vec2(amount*fringe,amount*fringe);\n",
 "		dp_FragColor.xy = dp_texture2D(Texture_First, TexCoord1-offset).xy;\n",
