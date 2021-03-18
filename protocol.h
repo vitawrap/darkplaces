@@ -391,7 +391,7 @@ typedef struct usercmd_s
 	double time; // time the move is executed for (cl_movement: clienttime, non-cl_movement: receivetime)
 	double receivetime; // time the move was received at
 	double clienttime; // time to which server state the move corresponds to
-	int msec; // for predicted moves
+	unsigned char msec; // for predicted moves
 	int buttons;
 	int impulse;
 	unsigned int sequence;
