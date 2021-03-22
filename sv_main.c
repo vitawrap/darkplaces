@@ -910,11 +910,6 @@ void SV_SendServerinfo (client_t *client)
 	client->movesequence = 0;
 	client->movement_highestsequence_seen = 0;
 	memset(&client->movement_count, 0, sizeof(client->movement_count));
-#ifdef NUM_PING_TIMES
-	for (i = 0;i < NUM_PING_TIMES;i++)
-		client->ping_times[i] = 0;
-	client->num_pings = 0;
-#endif
 	client->ping = 0;
 
 	// allow the client some time to send his keepalives, even if map loading took ages
@@ -2459,7 +2454,6 @@ static void SV_CheckTimeouts(void)
 {
 	int i;
 
-	// never timeout loopback connections
 	for (i = (host_isclient.integer ? 1 : 0), host_client = &svs.clients[i]; i < svs.maxclients; i++, host_client++)
 	{
 		if (host_client->netconnection && host.realtime > host_client->netconnection->timeout)
