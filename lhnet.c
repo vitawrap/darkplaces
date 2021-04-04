@@ -840,7 +840,7 @@ static const char *LHNETPRIVATE_StrError(void)
 #endif
 }
 
-void LHNET_SleepUntilPacket_Microseconds(int microseconds)
+inline void LHNET_SleepUntilPacket_Microseconds(int microseconds)
 {
 #ifdef FD_SET
 	fd_set fdreadset;

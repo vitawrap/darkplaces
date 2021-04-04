@@ -406,7 +406,7 @@ static inline void Host_Sleep(double time)
 
 	time0 = Sys_DirtyTime();
 	if (sv_checkforpacketsduringsleep.integer && !sys_usenoclockbutbenchmark.integer && !svs.threaded) {
-		NetConn_SleepMicroseconds((int)time);
+		LHNET_SleepUntilPacket_Microseconds((int)time);
 		if (cls.state != ca_dedicated)
 			NetConn_ClientFrame(); // helps server browser get good ping values
 		// TODO can we do the same for ServerFrame? Probably not.
