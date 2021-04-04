@@ -3356,23 +3356,22 @@ static void CL_NetworkTimeReceived(double newtime)
 			/* bones_was_here: this aims to prevent disturbances in the force from affecting cl.time
 			 * the rolling harmonic mean gives large time error outliers low significance
 			 * correction rate is dynamic and gradual (max 10% of mean error per tic)
-			 * time is correct within 1 or 2 tics of connect/map start
+			 * time is correct within a few server frames of connect/map start
 			 * can achieve microsecond accuracy when cl.realframetime is a multiple of sv.frametime
 			 * prevents 0ms move frame times with uncapped fps
 			 * smoothest mode esp. for vsynced clients on servers with aggressive inputtimeout
 			 */
 			{
-				static unsigned char err_num = 0;
-				static float err_stor[NUM_TIME_ERRORS] = {0.0f};
 				unsigned char i;
-				float err;
-				double targ = cl.movevars_ticrate ? cl.mtime[0] - cl.movevars_ticrate : cl.mtime[1];
-				err_stor[err_num] = 1.0f / max(fabs(cl.time - targ), FLT_MIN);
-				err_num = (err_num + 1) % NUM_TIME_ERRORS;
-				for (i = 0, err = 0.0f; i < NUM_TIME_ERRORS; i++)
-					err += err_stor[i];
-				err = 0.1f / (err / NUM_TIME_ERRORS);
-				cl.time = bound(cl.time - err, targ, cl.time + err);
+				float error;
+				// in event of packet loss, cl.mtime[1] could be very old, so avoid if possible
+				double target = cl.movevars_ticrate ? cl.mtime[0] - cl.movevars_ticrate : cl.mtime[1];
+				cl.ts_error_stor[cl.ts_error_num] = 1.0f / max(fabs(cl.time - target), FLT_MIN);
+				cl.ts_error_num = (cl.ts_error_num + 1) % NUM_TS_ERRORS;
+				for (i = 0, error = 0.0f; i < NUM_TS_ERRORS; i++)
+					error += cl.ts_error_stor[i];
+				error = 0.1f / (error / NUM_TS_ERRORS);
+				cl.time = bound(cl.time - error, target, cl.time + error);
 			}
 			break;
 		}
