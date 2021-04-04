@@ -18,10 +18,19 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 
 */
 
-// com_list.c - generic doubly linked list interface, inspired by Linux list.h
+// com_list.c - generic doubly linked list interface, adapted from Linux list.h
 
 #include "qtypes.h"
 #include "com_list.h"
+
+/*
+ * Creates a new linked list. Initializes the head to point to itself.
+ * If it's a list header, the result is an empty list.
+ */
+void List_Create(llist_t *list)
+{
+	list->next = list->prev = NULL;
+}
 
 /*
  * Insert a node between two known nodes.
@@ -55,7 +64,7 @@ void List_Add_Tail(llist_t *node, llist_t *head)
 /*
  * Bridge prev and next together, when removing the parent of them.
  */
-static void __List_Delete(llist_t *prev, llist_t *next)
+static inline void __List_Delete(llist_t *prev, llist_t *next)
 {
 	next->prev = prev;
 	prev->next = next;
@@ -64,7 +73,7 @@ static void __List_Delete(llist_t *prev, llist_t *next)
 /*
  * Redundant?
  */
-static void __List_Delete_Node(llist_t *node)
+static inline void __List_Delete_Node(llist_t *node)
 {
 	__List_Delete(node->prev, node->next);
 }
@@ -97,6 +106,16 @@ void List_Replace(llist_t *old, llist_t *_new)
 	_new->prev = old->prev;
 	_new->prev->next = _new;
 	old->next = old->prev = old;
+}
+
+/*
+ * Replace old with new. Initialize old.
+ * Old is overwritten if empty.
+ */
+void List_Replace_Init(llist_t *old, llist_t *_new)
+{
+	List_Replace(old, _new);
+	List_Create(old);
 }
 
 /*
@@ -155,7 +174,7 @@ void List_Rotate_Left(llist_t *head)
 {
 	llist_t *first;
 
-	if (!List_IsEmpty(head))
+	if (!List_Is_Empty(head))
 	{
 		first = head->next;
 		List_Move_Tail(first, head);
@@ -173,7 +192,7 @@ void List_Rotate_To_Front(llist_t *list, llist_t *head)
 /*
  * Concatenate two lists. The head of list will be discarded.
  */
-static void __List_Splice(const llist_t *list, llist_t *prev, llist_t *next)
+static inline void __List_Splice(const llist_t *list, llist_t *prev, llist_t *next)
 {
 	llist_t *first = list->next;
 	llist_t *last = list->prev;
@@ -190,7 +209,7 @@ static void __List_Splice(const llist_t *list, llist_t *prev, llist_t *next)
  */
 void List_Splice(const llist_t *list, llist_t *head)
 {
-	if(!List_IsEmpty(list))
+	if(!List_Is_Empty(list))
 		__List_Splice(list, head, head->next);
 }
 
@@ -199,21 +218,21 @@ void List_Splice(const llist_t *list, llist_t *head)
  */
 void List_Splice_Tail(const llist_t *list, llist_t *head)
 {
-	if (!List_IsEmpty(list))
+	if (!List_Is_Empty(list))
 		__List_Splice(list, head->prev, head);
 }
 
-qbool List_IsFirst(llist_t *list, llist_t *start)
+qbool List_Is_First(llist_t *list, llist_t *start)
 {
 	return list->prev == start;
 }
 
-qbool List_IsLast(llist_t *list, llist_t *start)
+qbool List_Is_Last(llist_t *list, llist_t *start)
 {
 	return list->next == start;
 }
 
-qbool List_IsEmpty(const llist_t *list)
+qbool List_Is_Empty(const llist_t *list)
 {
 	return list->next == list;
 }

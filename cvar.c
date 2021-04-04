@@ -365,6 +365,18 @@ void Cvar_UpdateAllAutoCvars(cvar_state_t *cvars)
 		Cvar_UpdateAutoCvar(var);
 }
 
+void Cvar_Callback(cvar_t *var)
+{
+	if (var == NULL)
+	{
+		Con_Print("Cvar_Callback: var == NULL\n");
+		return;
+	}
+
+	if(var->callback)
+		var->callback(var);
+}
+
 /*
 ============
 Cvar_Set
@@ -413,8 +425,7 @@ static void Cvar_SetQuick_Internal (cvar_t *var, const char *value)
 	Cvar_UpdateAutoCvar(var);
 
 	// Call the function stored in the cvar for bounds checking, cleanup, etc
-	if (var->callback)
-		var->callback(var);
+	Cvar_Callback(var);
 }
 
 void Cvar_SetQuick (cvar_t *var, const char *value)
@@ -472,6 +483,11 @@ void Cvar_SetValue(cvar_state_t *cvars, const char *var_name, float value)
 
 void Cvar_RegisterCallback(cvar_t *variable, void (*callback)(cvar_t *))
 {
+	if (variable == NULL)
+	{
+		Con_Print("Cvar_RegisterCallback: var == NULL\n");
+		return;
+	}
 	variable->callback = callback;
 }
 
@@ -605,7 +621,7 @@ void Cvar_RegisterVariable (cvar_t *variable)
 	}
 
 	// check for overlap with a command
-	if (Cmd_Exists(&cmd_local, variable->name) || Cmd_Exists(&cmd_local, variable->name))
+	if (Cmd_Exists(cmd_client, variable->name) || Cmd_Exists(cmd_server, variable->name))
 	{
 		Con_Printf("Cvar_RegisterVariable: %s is a command\n", variable->name);
 		return;
@@ -618,6 +634,7 @@ void Cvar_RegisterVariable (cvar_t *variable)
 	variable->value = atof (variable->string);
 	variable->integer = (int) variable->value;
 	variable->aliasindex = 0;
+	variable->initstate = NULL;
 
 	// Mark it as not an autocvar.
 	for (i = 0;i < PRVM_PROG_MAX;i++)
@@ -668,7 +685,7 @@ cvar_t *Cvar_Get(cvar_state_t *cvars, const char *name, const char *value, int f
 	}
 
 	// check for overlap with a command
-	if (Cmd_Exists(&cmd_local, name) || Cmd_Exists(&cmd_local, name))
+	if (Cmd_Exists(cmd_client, name) || Cmd_Exists(cmd_server, name))
 	{
 		Con_Printf("Cvar_Get: %s is a command\n", name);
 		return NULL;
@@ -685,6 +702,7 @@ cvar_t *Cvar_Get(cvar_state_t *cvars, const char *name, const char *value, int f
 	cvar->value = atof (cvar->string);
 	cvar->integer = (int) cvar->value;
 	cvar->aliases = (char **)Z_Malloc(sizeof(char **));
+	cvar->initstate = NULL;
 	memset(cvar->aliases, 0, sizeof(char *));
 
 	if(newdescription && *newdescription)
@@ -785,13 +803,8 @@ void Cvar_SaveInitState(cvar_state_t *cvars)
 	cvar_t *c;
 	for (c = cvars->vars;c;c = c->next)
 	{
-		c->initstate = true;
-		c->initflags = c->flags;
-		c->initdefstring = Mem_strdup(zonemempool, c->defstring);
-		c->initstring = Mem_strdup(zonemempool, c->string);
-		c->initvalue = c->value;
-		c->initinteger = c->integer;
-		VectorCopy(c->vector, c->initvector);
+		c->initstate = (cvar_t *)Z_Malloc(sizeof(cvar_t));
+		memcpy(c->initstate, c, sizeof(cvar_t));
 	}
 }
 
@@ -805,22 +818,22 @@ void Cvar_RestoreInitState(cvar_state_t *cvars)
 		if (c->initstate)
 		{
 			// restore this cvar, it existed at init
-			if (((c->flags ^ c->initflags) & CF_MAXFLAGSVAL)
-			 || strcmp(c->defstring ? c->defstring : "", c->initdefstring ? c->initdefstring : "")
-			 || strcmp(c->string ? c->string : "", c->initstring ? c->initstring : ""))
+			if (((c->flags ^ c->initstate->flags) & CF_MAXFLAGSVAL)
+			 || strcmp(c->defstring ? c->defstring : "", c->initstate->defstring ? c->initstate->defstring : "")
+			 || strcmp(c->string ? c->string : "", c->initstate->string ? c->initstate->string : ""))
 			{
 				Con_DPrintf("Cvar_RestoreInitState: Restoring cvar \"%s\"\n", c->name);
 				if (c->defstring)
 					Z_Free((char *)c->defstring);
-				c->defstring = Mem_strdup(zonemempool, c->initdefstring);
+				c->defstring = Mem_strdup(zonemempool, c->initstate->defstring);
 				if (c->string)
 					Z_Free((char *)c->string);
-				c->string = Mem_strdup(zonemempool, c->initstring);
+				c->string = Mem_strdup(zonemempool, c->initstate->string);
 			}
-			c->flags = c->initflags;
-			c->value = c->initvalue;
-			c->integer = c->initinteger;
-			VectorCopy(c->initvector, c->vector);
+			c->flags = c->initstate->flags;
+			c->value = c->initstate->value;
+			c->integer = c->initstate->integer;
+			VectorCopy(c->initstate->vector, c->vector);
 			cp = &c->next;
 		}
 		else

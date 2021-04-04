@@ -81,15 +81,7 @@ typedef struct cvar_s
 	char **aliases;
 	int aliasindex;
 
-	// values at init (for Cvar_RestoreInitState)
-	qbool initstate; // indicates this existed at init
-	int initflags;
-	const char *initstring;
-	const char *initdescription;
-	int initinteger;
-	float initvalue;
-	float initvector[3];
-	const char *initdefstring;
+	struct cvar_s *initstate; // snapshot of cvar during init
 
 	int globaldefindex[3];
 	int globaldefindex_stringno[3];
@@ -122,6 +114,8 @@ void Cvar_RegisterCallback(cvar_t *variable, void (*callback)(cvar_t *));
 void Cvar_RegisterVariable(cvar_t *variable);
 
 qbool Cvar_Readonly (cvar_t *var, const char *cmd_name);
+
+void Cvar_Callback(cvar_t *var);
 
 /// equivelant to "<name> <variable>" typed at the console
 void Cvar_Set (cvar_state_t *cvars, const char *var_name, const char *value);

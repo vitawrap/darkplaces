@@ -22,8 +22,9 @@ Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.
 #include "quakedef.h"
 #include "thread.h"
 
-cmd_state_t cmd_local;
-cmd_state_t cmd_serverfromclient;
+cmd_state_t *cmd_client;
+cmd_state_t *cmd_server;
+cmd_state_t *cmd_serverfromclient;
 
 cmd_userdefined_t cmd_userdefined_all;
 cmd_userdefined_t cmd_userdefined_null;
@@ -33,11 +34,7 @@ typedef struct cmd_iter_s {
 }
 cmd_iter_t;
 
-static cmd_iter_t cmd_iter_all[] = {
-	{&cmd_local},
-	{&cmd_serverfromclient},
-	{NULL},
-};
+static cmd_iter_t *cmd_iter_all;
 
 mempool_t *cbuf_mempool;
 
@@ -86,21 +83,21 @@ static void Cmd_Defer_f (cmd_state_t *cmd)
 
 	if(Cmd_Argc(cmd) == 1)
 	{
-		if(List_IsEmpty(&cbuf->deferred))
+		if(List_Is_Empty(&cbuf->deferred))
 			Con_Printf("No commands are pending.\n");
 		else
 		{
 			llist_t *pos;
-        	List_ForEach(pos, &cbuf->deferred)
+        	List_For_Each(pos, &cbuf->deferred)
     		{
-				current = List_Container(*pos, cmd_input_t, list);
+				current = List_Entry(*pos, cmd_input_t, list);
 				Con_Printf("-> In %9.2f: %s\n", current->delay, current->text);
 			}
 		}
 	}
 	else if(Cmd_Argc(cmd) == 2 && !strcasecmp("clear", Cmd_Argv(cmd, 1)))
 	{
-		while(!List_IsEmpty(&cbuf->deferred))
+		while(!List_Is_Empty(&cbuf->deferred))
 			List_Move_Tail(cbuf->deferred.next, &cbuf->free);
 	}
 	else if(Cmd_Argc(cmd) == 3)
@@ -185,9 +182,9 @@ static cmd_input_t *Cbuf_LinkGet(cmd_buf_t *cbuf, cmd_input_t *existing)
 	cmd_input_t *ret = NULL;
 	if(existing && existing->pending)
 		ret = existing;
-	else if(!List_IsEmpty(&cbuf->free))
+	else if(!List_Is_Empty(&cbuf->free))
 	{
-		ret = List_Container(*cbuf->free.next, cmd_input_t, list);
+		ret = List_Entry(*cbuf->free.next, cmd_input_t, list);
 		ret->length = 0;
 		ret->pending = false;
 	}
@@ -361,8 +358,8 @@ void Cbuf_AddText (cmd_state_t *cmd, const char *text)
 		Con_Print("Cbuf_AddText: overflow\n");
 	else
 	{
-		Cbuf_LinkCreate(cmd, &llist, (List_IsEmpty(&cbuf->start) ? NULL : List_Container(*cbuf->start.prev, cmd_input_t, list)), text);
-		if(!List_IsEmpty(&llist))
+		Cbuf_LinkCreate(cmd, &llist, (List_Is_Empty(&cbuf->start) ? NULL : List_Entry(*cbuf->start.prev, cmd_input_t, list)), text);
+		if(!List_Is_Empty(&llist))
 			List_Splice_Tail(&llist, &cbuf->start);
 	}
 	Cbuf_Unlock(cbuf);
@@ -389,8 +386,8 @@ void Cbuf_InsertText (cmd_state_t *cmd, const char *text)
 		Con_Print("Cbuf_InsertText: overflow\n");
 	else
 	{
-		Cbuf_LinkCreate(cmd, &llist, List_Container(*cbuf->start.next, cmd_input_t, list), text);
-		if(!List_IsEmpty(&llist))
+		Cbuf_LinkCreate(cmd, &llist, List_Entry(*cbuf->start.next, cmd_input_t, list), text);
+		if(!List_Is_Empty(&llist))
 			List_Splice(&llist, &cbuf->start);
 	}
 
@@ -415,9 +412,9 @@ static void Cbuf_Execute_Deferred (cmd_buf_t *cbuf)
 		return;
 	cbuf->deferred_oldtime = host.realtime;
 
-    List_ForEach(pos, &cbuf->deferred)
+    List_For_Each(pos, &cbuf->deferred)
 	{
-		current = List_Container(*pos, cmd_input_t, list);
+		current = List_Entry(*pos, cmd_input_t, list);
 		current->delay -= eat;
 		if(current->delay <= 0)
 		{
@@ -444,14 +441,14 @@ void Cbuf_Execute (cmd_buf_t *cbuf)
 	// LadyHavoc: making sure the tokenizebuffer doesn't get filled up by repeated crashes
 	cbuf->tokenizebufferpos = 0;
 
-	while (!List_IsEmpty(&cbuf->start))
+	while (!List_Is_Empty(&cbuf->start))
 	{
 		/*
 		 * Delete the text from the command buffer and move remaining
 		 * commands down. This is necessary because commands (exec, alias)
 		 * can insert data at the beginning of the text buffer
 		 */
-		current = List_Container(*cbuf->start.next, cmd_input_t, list);
+		current = List_Entry(*cbuf->start.next, cmd_input_t, list);
 		
 		// Recycle memory so using WASD doesn't cause a malloc and free
 		List_Move_Tail(&current->list, &cbuf->free);
@@ -1600,6 +1597,25 @@ static void Cmd_Apropos_f(cmd_state_t *cmd)
 	Con_Printf("%i result%s\n\n", count, (count > 1) ? "s" : "");
 }
 
+static cmd_state_t *Cmd_AddInterpreter(cmd_buf_t *cbuf, cvar_state_t *cvars, int cvars_flagsmask, int cmds_flagsmask, cmd_userdefined_t *userdefined, int autoflags, xcommand_t autofunction)
+{
+	cmd_state_t *cmd = (cmd_state_t *)Mem_Alloc(tempmempool, sizeof(cmd_state_t));
+	
+	cmd->mempool = Mem_AllocPool("commands", 0, NULL);
+	// space for commands and script files
+	cmd->cbuf = cbuf;
+	cmd->null_string = "";
+
+	cmd->cvars = cvars;
+	cmd->cvars_flagsmask = cvars_flagsmask;
+	cmd->cmd_flags = cmds_flagsmask;
+	cmd->auto_flags = autoflags;
+	cmd->auto_function = autofunction;
+	cmd->userdefined = userdefined;
+
+	return cmd;
+}
+
 /*
 ============
 Cmd_Init
@@ -1607,7 +1623,6 @@ Cmd_Init
 */
 void Cmd_Init(void)
 {
-	cmd_iter_t *cmd_iter;
 	cmd_buf_t *cbuf;
 	cbuf_mempool = Mem_AllocPool("Command buffer", 0, NULL);
 	cbuf = (cmd_buf_t *)Mem_Alloc(cbuf_mempool, sizeof(cmd_buf_t));
@@ -1620,29 +1635,19 @@ void Cmd_Init(void)
 	cbuf->deferred.prev = cbuf->deferred.next = &(cbuf->deferred);
 	cbuf->free.prev = cbuf->free.next = &(cbuf->free);
 
-	for (cmd_iter = cmd_iter_all; cmd_iter->cmd; cmd_iter++)
-	{
-		cmd_state_t *cmd = cmd_iter->cmd;
-		cmd->mempool = Mem_AllocPool("commands", 0, NULL);
-		// space for commands and script files
-		cmd->cbuf = cbuf;
-		cmd->null_string = "";
-	}
-	// client console can see server cvars because the user may start a server
-	cmd_local.cvars = &cvars_all;
-	cmd_local.cvars_flagsmask = CF_CLIENT | CF_SERVER;
-	cmd_local.cmd_flags = CF_SERVER | CF_CLIENT | CF_CLIENT_FROM_SERVER;
-	cmd_local.auto_flags = CF_SERVER_FROM_CLIENT;
-	cmd_local.auto_function = CL_ForwardToServer_f; // FIXME: Move this to the client.
-	cmd_local.userdefined = &cmd_userdefined_all;
-	// server commands received from clients have no reason to access cvars, cvar expansion seems perilous.
-	cmd_serverfromclient.cvars = &cvars_null;
-	cmd_serverfromclient.cvars_flagsmask = 0;
-	cmd_serverfromclient.cmd_flags = CF_SERVER_FROM_CLIENT | CF_USERINFO;
-	cmd_serverfromclient.auto_flags = 0;
-	cmd_serverfromclient.auto_function = NULL;
-	cmd_serverfromclient.userdefined = &cmd_userdefined_null;
+	// FIXME: Get rid of cmd_iter_all eventually. This is just a hack to reduce the amount of work to make the interpreters dynamic.
+	cmd_iter_all = (cmd_iter_t *)Mem_Alloc(tempmempool, sizeof(cmd_iter_t) * 4);
 
+	// client console can see server cvars because the user may start a server
+	cmd_iter_all[0].cmd = cmd_client = Cmd_AddInterpreter(cbuf, &cvars_all, CF_CLIENT | CF_SERVER, CF_CLIENT | CF_CLIENT_FROM_SERVER, &cmd_userdefined_all, CF_SERVER_FROM_CLIENT, CL_ForwardToServer_f);
+
+	// dedicated server console can only see server cvars, there is no client
+	cmd_iter_all[1].cmd = cmd_server = Cmd_AddInterpreter(cbuf, &cvars_all, CF_SERVER, CF_SERVER, &cmd_userdefined_all, 0, NULL);
+
+	// server commands received from clients have no reason to access cvars, cvar expansion seems perilous.
+	cmd_iter_all[2].cmd = cmd_serverfromclient = Cmd_AddInterpreter(cbuf, &cvars_null, 0, CF_SERVER_FROM_CLIENT | CF_USERINFO, &cmd_userdefined_null, 0, NULL);
+
+	cmd_iter_all[3].cmd = NULL;
 //
 // register our commands
 //
@@ -1815,7 +1820,7 @@ void Cmd_AddCommand(int flags, const char *cmd_name, xcommand_t function, const 
 	qbool auto_add = false;
 	int i;
 
-	for (i = 0; i < 2; i++)
+	for (i = 0; i < 3; i++)
 	{
 		cmd = cmd_iter_all[i].cmd;
 		if ((flags & cmd->cmd_flags) || (flags & cmd->auto_flags))

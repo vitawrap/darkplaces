@@ -67,7 +67,7 @@ void CL_NextDemo (void)
 	}
 
 	dpsnprintf (str, sizeof(str), "playdemo %s\n", cls.demos[cls.demonum]);
-	Cbuf_InsertText(&cmd_local, str);
+	Cbuf_InsertText(cmd_client, str);
 	cls.demonum++;
 }
 
@@ -99,9 +99,6 @@ void CL_StopPlayback (void)
 	if (!cls.demostarting) // only quit if not starting another demo
 		if (Sys_CheckParm("-demo") || Sys_CheckParm("-capturedemo"))
 			host.state = host_shutdown;
-
-	cls.demonum = -1;
-
 }
 
 /*
@@ -277,7 +274,7 @@ void CL_ReadDemoMessage(void)
 			CL_ParseServerMessage();
 
 			if (cls.signon != SIGNONS)
-				Cbuf_Execute((&cmd_local)->cbuf); // immediately execute svc_stufftext if in the demo before connect!
+				Cbuf_Execute((cmd_client)->cbuf); // immediately execute svc_stufftext if in the demo before connect!
 
 			// In case the demo contains a "svc_disconnect" message
 			if (!cls.demoplayback)
@@ -409,7 +406,7 @@ void CL_Record_f(cmd_state_t *cmd)
 ====================
 CL_PlayDemo_f
 
-play [demoname]
+playdemo [demoname]
 ====================
 */
 void CL_PlayDemo_f(cmd_state_t *cmd)
@@ -421,7 +418,7 @@ void CL_PlayDemo_f(cmd_state_t *cmd)
 
 	if (Cmd_Argc(cmd) != 2)
 	{
-		Con_Print("play <demoname> : plays a demo\n");
+		Con_Print("playdemo <demoname> : plays a demo\n");
 		return;
 	}
 
@@ -439,8 +436,10 @@ void CL_PlayDemo_f(cmd_state_t *cmd)
 	cls.demostarting = true;
 
 	// disconnect from server
-	CL_Disconnect ();
-	SV_Shutdown ();
+	if(cls.state == ca_connected)
+		CL_Disconnect();
+	if(sv.active)
+		SV_Shutdown();
 
 	// update networking ports (this is mainly just needed at startup)
 	NetConn_UpdateSockets();
@@ -532,7 +531,7 @@ static void CL_FinishTimeDemo (void)
 			if(atoi(sys.argv[i + 1]) > benchmark_runs)
 			{
 				// restart the benchmark
-				Cbuf_AddText(&cmd_local, va(vabuf, sizeof(vabuf), "timedemo %s\n", cls.demoname));
+				Cbuf_AddText(cmd_client, va(vabuf, sizeof(vabuf), "timedemo %s\n", cls.demoname));
 				// cannot execute here
 			}
 			else
@@ -695,8 +694,7 @@ static void CL_Stopdemo_f(cmd_state_t *cmd)
 {
 	if (!cls.demoplayback)
 		return;
-	CL_Disconnect ();
-	SV_Shutdown ();
+	CL_Disconnect();
 }
 
 // LadyHavoc: pausedemo command

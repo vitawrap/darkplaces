@@ -267,7 +267,7 @@ cachepic_t *Draw_NewPic(const char *picname, int width, int height, unsigned cha
 		if (pic->flags & CACHEPICFLAG_NEWPIC && pic->skinframe && pic->skinframe->base && pic->width == width && pic->height == height)
 		{
 			Con_DPrintf("Draw_NewPic(\"%s\"): frame %i: updating texture\n", picname, draw_frame);
-			R_UpdateTexture(pic->skinframe->base, pixels_bgra, 0, 0, 0, width, height, 1);
+			R_UpdateTexture(pic->skinframe->base, pixels_bgra, 0, 0, 0, width, height, 1, 0);
 			R_SkinFrame_MarkUsed(pic->skinframe);
 			pic->lastusedframe = draw_frame;
 			return pic;
@@ -1404,7 +1404,7 @@ void DrawQ_SuperPic(float x, float y, cachepic_t *pic, float width, float height
 	Mod_Mesh_AddTriangle(mod, surf, e0, e2, e3);
 }
 
-void DrawQ_Line (float width, float x1, float y1, float x2, float y2, float r, float g, float b, float alpha, int flags)
+void DrawQ_Line (float width, float x1, float y1, float x2, float y2, float r, float g, float b, float alpha, int flags, qbool fast)
 {
 	model_t *mod = CL_Mesh_UI();
 	msurface_t *surf;
@@ -1422,10 +1422,21 @@ void DrawQ_Line (float width, float x1, float y1, float x2, float y2, float r, f
 		offsety = 0;
 	}
 	surf = Mod_Mesh_AddSurface(mod, Mod_Mesh_GetTexture(mod, "white", 0, 0, MATERIALFLAG_WALL | MATERIALFLAG_VERTEXCOLOR | MATERIALFLAG_ALPHAGEN_VERTEX | MATERIALFLAG_ALPHA | MATERIALFLAG_BLENDED | MATERIALFLAG_NOSHADOW), true);
-	e0 = Mod_Mesh_IndexForVertex(mod, surf, x1 - offsetx, y1 - offsety, 10, 0, 0, -1, 0, 0, 0, 0, r, g, b, alpha);
-	e1 = Mod_Mesh_IndexForVertex(mod, surf, x2 - offsetx, y2 - offsety, 10, 0, 0, -1, 0, 0, 0, 0, r, g, b, alpha);
-	e2 = Mod_Mesh_IndexForVertex(mod, surf, x2 + offsetx, y2 + offsety, 10, 0, 0, -1, 0, 0, 0, 0, r, g, b, alpha);
-	e3 = Mod_Mesh_IndexForVertex(mod, surf, x1 + offsetx, y1 + offsety, 10, 0, 0, -1, 0, 0, 0, 0, r, g, b, alpha);
+	if (fast)
+	{
+		Mod_Mesh_CheckResize_Vertex(mod, surf);
+		e0 = Mod_Mesh_AddVertex(mod, surf, x1 - offsetx, y1 - offsety, 10, 0, 0, -1, 0, 0, 0, 0, r, g, b, alpha);
+		e1 = Mod_Mesh_AddVertex(mod, surf, x2 - offsetx, y2 - offsety, 10, 0, 0, -1, 0, 0, 0, 0, r, g, b, alpha);
+		e2 = Mod_Mesh_AddVertex(mod, surf, x2 + offsetx, y2 + offsety, 10, 0, 0, -1, 0, 0, 0, 0, r, g, b, alpha);
+		e3 = Mod_Mesh_AddVertex(mod, surf, x1 + offsetx, y1 + offsety, 10, 0, 0, -1, 0, 0, 0, 0, r, g, b, alpha);
+	}
+	else
+	{
+		e0 = Mod_Mesh_IndexForVertex(mod, surf, x1 - offsetx, y1 - offsety, 10, 0, 0, -1, 0, 0, 0, 0, r, g, b, alpha);
+		e1 = Mod_Mesh_IndexForVertex(mod, surf, x2 - offsetx, y2 - offsety, 10, 0, 0, -1, 0, 0, 0, 0, r, g, b, alpha);
+		e2 = Mod_Mesh_IndexForVertex(mod, surf, x2 + offsetx, y2 + offsety, 10, 0, 0, -1, 0, 0, 0, 0, r, g, b, alpha);
+		e3 = Mod_Mesh_IndexForVertex(mod, surf, x1 + offsetx, y1 + offsety, 10, 0, 0, -1, 0, 0, 0, 0, r, g, b, alpha);
+	}
 	Mod_Mesh_AddTriangle(mod, surf, e0, e1, e2);
 	Mod_Mesh_AddTriangle(mod, surf, e0, e2, e3);
 }

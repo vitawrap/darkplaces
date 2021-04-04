@@ -523,7 +523,7 @@ qbool JPEG_OpenLibrary (void)
 #endif
 
 	// Load the DLL
-	return Sys_LoadLibrary (dllnames, &jpeg_dll, jpegfuncs);
+	return Sys_LoadDependency (dllnames, &jpeg_dll, jpegfuncs);
 #endif
 }
 
@@ -538,7 +538,7 @@ Unload the JPEG DLL
 void JPEG_CloseLibrary (void)
 {
 #ifndef LINK_TO_LIBJPEG
-	Sys_UnloadLibrary (&jpeg_dll);
+	Sys_FreeLibrary (&jpeg_dll);
 	jpeg_tried_loading = false; // allow retry
 #endif
 }

@@ -205,6 +205,11 @@ extern cvar_t r_fullbright;
 extern cvar_t r_wateralpha;
 extern cvar_t r_dynamic;
 
+extern cvar_t r_q1bsp_lightmap_updates_enabled;
+extern cvar_t r_q1bsp_lightmap_updates_combine;
+extern cvar_t r_q1bsp_lightmap_updates_combine_full_texture;
+extern cvar_t r_q1bsp_lightmap_updates_hidden_surfaces;
+
 void R_NewExplosion(const vec3_t org);
 void R_UpdateVariables(void); // must call after setting up most of r_refdef, but before calling R_RenderView
 void R_RenderView(int fbo, rtexture_t *depthtexture, rtexture_t *colortexture, int x, int y, int width, int height); // must set r_refdef and call R_UpdateVariables and CL_UpdateEntityShading first
@@ -812,7 +817,7 @@ rsurfacepass_t;
 void R_SetupShader_Generic(rtexture_t *t, qbool usegamma, qbool notrippy, qbool suppresstexalpha);
 void R_SetupShader_Generic_NoTexture(qbool usegamma, qbool notrippy);
 void R_SetupShader_DepthOrShadow(qbool notrippy, qbool depthrgb, qbool skeletal);
-void R_SetupShader_Surface(const float ambientcolor[3], const float diffusecolor[3], const float specularcolor[3], rsurfacepass_t rsurfacepass, int texturenumsurfaces, const msurface_t **texturesurfacelist, void *waterplane, qbool notrippy);
+void R_SetupShader_Surface(const float ambientcolor[3], const float diffusecolor[3], const float specularcolor[3], rsurfacepass_t rsurfacepass, int texturenumsurfaces, const msurface_t **texturesurfacelist, void *waterplane, qbool notrippy, qbool ui);
 void R_SetupShader_DeferredLight(const rtlight_t *rtlight);
 
 typedef struct r_rendertarget_s {
@@ -976,7 +981,7 @@ void R_Shadow_EditLights_DrawSelectedLightProperties(void);
 void R_DecalSystem_Reset(decalsystem_t *decalsystem);
 void R_Shadow_UpdateBounceGridTexture(void);
 void R_DrawPortals(void);
-void R_BuildLightMap(const entity_render_t *ent, msurface_t *surface);
+void R_BuildLightMap(const entity_render_t *ent, msurface_t *surface, int combine);
 void R_Water_AddWaterPlane(msurface_t *surface, int entno);
 int R_Shadow_GetRTLightInfo(unsigned int lightindex, float *origin, float *radius, float *color);
 dp_font_t *FindFont(const char *title, qbool allocate_new);

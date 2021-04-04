@@ -147,10 +147,10 @@ void World_UnlinkAll(world_t *world)
 	// unlink all entities one by one
 	grid = &world->areagrid_outside;
 	while (grid->list.next != &grid->list)
-		World_UnlinkEdict(PRVM_EDICT_NUM(List_Container(*grid->list.next, link_t, list)->entitynumber));
+		World_UnlinkEdict(PRVM_EDICT_NUM(List_Entry(*grid->list.next, link_t, list)->entitynumber));
 	for (i = 0, grid = world->areagrid;i < AREA_GRIDNODES;i++, grid++)
 		while (grid->list.next != &grid->list)
-			World_UnlinkEdict(PRVM_EDICT_NUM(List_Container(*grid->list.next, link_t, list)->entitynumber));
+			World_UnlinkEdict(PRVM_EDICT_NUM(List_Entry(*grid->list.next, link_t, list)->entitynumber));
 }
 
 /*
@@ -215,9 +215,9 @@ int World_EntitiesInBox(world_t *world, const vec3_t requestmins, const vec3_t r
 	if (world->areagrid_outside.list.next)
 	{
 		grid = &world->areagrid_outside;
-		List_ForEach(pos, &grid->list)
+		List_For_Each(pos, &grid->list)
 		{
-			l = List_Container(*pos, link_t, list);
+			l = List_Entry(*pos, link_t, list);
 			ent = PRVM_EDICT_NUM(l->entitynumber);
 			if (ent->priv.server->areagridmarknumber != world->areagrid_marknumber)
 			{
@@ -240,9 +240,9 @@ int World_EntitiesInBox(world_t *world, const vec3_t requestmins, const vec3_t r
 		{
 			if (grid->list.next)
 			{
-				List_ForEach(pos, &grid->list)
+				List_For_Each(pos, &grid->list)
 				{
-					l = List_Container(*pos, link_t, list);
+					l = List_Entry(*pos, link_t, list);
 					ent = PRVM_EDICT_NUM(l->entitynumber);
 					if (ent->priv.server->areagridmarknumber != world->areagrid_marknumber)
 					{
@@ -1522,7 +1522,7 @@ static void World_Physics_Init(void)
 
 #ifndef LINK_TO_LIBODE
 	// Load the DLL
-	if (Sys_LoadLibrary (dllnames, &ode_dll, odefuncs))
+	if (Sys_LoadDependency (dllnames, &ode_dll, odefuncs))
 #endif
 	{
 		dInitODE();
@@ -1539,7 +1539,7 @@ static void World_Physics_Init(void)
 # else
 			Con_Printf("ODE library not compiled for double precision - incompatible!  Not using ODE physics.\n");
 # endif
-			Sys_UnloadLibrary(&ode_dll);
+			Sys_FreeLibrary(&ode_dll);
 			ode_dll = NULL;
 		}
 		else
@@ -1565,7 +1565,7 @@ static void World_Physics_Shutdown(void)
 	{
 		dCloseODE();
 #ifndef LINK_TO_LIBODE
-		Sys_UnloadLibrary(&ode_dll);
+		Sys_FreeLibrary(&ode_dll);
 		ode_dll = NULL;
 #endif
 	}
@@ -2290,9 +2290,9 @@ static void World_Physics_Frame_BodyFromEntity(world_t *world, prvm_edict_t *ed)
 
 			// check if trimesh can be defined with convex
 			convex_compatible = false;
-			for (i = 0;i < model->nummodelsurfaces;i++)
+			for (i = model->submodelsurfaces_start;i < model->submodelsurfaces_end;i++)
 			{
-				if (!strcmp(((msurface_t *)(model->data_surfaces + model->firstmodelsurface + i))->texture->name, "collisionconvex"))
+				if (!strcmp(model->data_surfaces[i].texture->name, "collisionconvex"))
 				{
 					convex_compatible = true;
 					break;

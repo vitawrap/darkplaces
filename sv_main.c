@@ -76,7 +76,7 @@ cvar_t sv_checkforpacketsduringsleep = {CF_SERVER, "sv_checkforpacketsduringslee
 cvar_t sv_clmovement_enable = {CF_SERVER, "sv_clmovement_enable", "1", "whether to allow clients to use cl_movement prediction, which can cause choppy movement on the server which may annoy other players"};
 cvar_t sv_clmovement_minping = {CF_SERVER, "sv_clmovement_minping", "0", "if client ping is below this time in milliseconds, then their ability to use cl_movement prediction is disabled for a while (as they don't need it)"};
 cvar_t sv_clmovement_minping_disabletime = {CF_SERVER, "sv_clmovement_minping_disabletime", "1000", "when client falls below minping, disable their prediction for this many milliseconds (should be at least 1000 or else their prediction may turn on/off frequently)"};
-cvar_t sv_clmovement_inputtimeout = {CF_SERVER, "sv_clmovement_inputtimeout", "0.2", "when a client does not send input for this many seconds, force them to move anyway (unlike QuakeWorld)"};
+cvar_t sv_clmovement_inputtimeout = {CF_SERVER, "sv_clmovement_inputtimeout", "0.1", "when a client does not send input for this many seconds (max 0.1), force them to move anyway (unlike QuakeWorld)"};
 cvar_t sv_cullentities_nevercullbmodels = {CF_SERVER, "sv_cullentities_nevercullbmodels", "0", "if enabled the clients are always notified of moving doors and lifts and other submodels of world (warning: eats a lot of network bandwidth on some levels!)"};
 cvar_t sv_cullentities_pvs = {CF_SERVER, "sv_cullentities_pvs", "1", "fast but loose culling of hidden entities"};
 cvar_t sv_cullentities_stats = {CF_SERVER, "sv_cullentities_stats", "0", "displays stats on network entities culled by various methods for each client"};
@@ -147,8 +147,8 @@ cvar_t sv_sound_watersplash = {CF_SERVER, "sv_sound_watersplash", "misc/h2ohit1.
 cvar_t sv_stepheight = {CF_SERVER | CF_NOTIFY, "sv_stepheight", "18", "how high you can step up (TW_SV_STEPCONTROL extension)"};
 cvar_t sv_stopspeed = {CF_SERVER | CF_NOTIFY, "sv_stopspeed","100", "how fast you come to a complete stop"};
 cvar_t sv_wallfriction = {CF_SERVER | CF_NOTIFY, "sv_wallfriction", "1", "how much you slow down when sliding along a wall"};
-cvar_t sv_wateraccelerate = {CF_SERVER, "sv_wateraccelerate", "-1", "rate at which a player accelerates to sv_maxspeed while in the air, if less than 0 the sv_accelerate variable is used instead"};
-cvar_t sv_waterfriction = {CF_SERVER | CF_NOTIFY, "sv_waterfriction","-1", "how fast you slow down, if less than 0 the sv_friction variable is used instead"};
+cvar_t sv_wateraccelerate = {CF_SERVER, "sv_wateraccelerate", "-1", "rate at which a player accelerates to sv_maxspeed while in water, if less than 0 the sv_accelerate variable is used instead"};
+cvar_t sv_waterfriction = {CF_SERVER | CF_NOTIFY, "sv_waterfriction","-1", "how fast you slow down in water, if less than 0 the sv_friction variable is used instead"};
 cvar_t sv_warsowbunny_airforwardaccel = {CF_SERVER, "sv_warsowbunny_airforwardaccel", "1.00001", "how fast you accelerate until you reach sv_maxspeed"};
 cvar_t sv_warsowbunny_accel = {CF_SERVER, "sv_warsowbunny_accel", "0.1585", "how fast you accelerate until after reaching sv_maxspeed (it gets harder as you near sv_warsowbunny_topspeed)"};
 cvar_t sv_warsowbunny_topspeed = {CF_SERVER, "sv_warsowbunny_topspeed", "925", "soft speed limit (can get faster with rjs and on ramps)"};
@@ -910,11 +910,6 @@ void SV_SendServerinfo (client_t *client)
 	client->movesequence = 0;
 	client->movement_highestsequence_seen = 0;
 	memset(&client->movement_count, 0, sizeof(client->movement_count));
-#ifdef NUM_PING_TIMES
-	for (i = 0;i < NUM_PING_TIMES;i++)
-		client->ping_times[i] = 0;
-	client->num_pings = 0;
-#endif
 	client->ping = 0;
 
 	// allow the client some time to send his keepalives, even if map loading took ages
@@ -1796,15 +1791,6 @@ void SV_SpawnServer (const char *map)
 
 	if(sv.active)
 	{
-		client_t *client;
-		for (i = 0, client = svs.clients;i < svs.maxclients;i++, client++)
-		{
-			if (client->netconnection)
-			{
-				MSG_WriteByte(&client->netconnection->message, svc_stufftext);
-				MSG_WriteString(&client->netconnection->message, "reconnect\n");
-			}
-		}
 		World_End(&sv.world);
 		if(PRVM_serverfunction(SV_Shutdown))
 		{
@@ -1847,8 +1833,23 @@ void SV_SpawnServer (const char *map)
 //
 // tell all connected clients that we are going to a new level
 //
-	if (!sv.active)
+	if (sv.active)
+	{
+		client_t *client;
+		for (i = 0, client = svs.clients;i < svs.maxclients;i++, client++)
+		{
+			if (client->netconnection)
+			{
+				MSG_WriteByte(&client->netconnection->message, svc_stufftext);
+				MSG_WriteString(&client->netconnection->message, "reconnect\n");
+			}
+		}
+	}
+	else
+	{
+		// open server port
 		NetConn_OpenServerPorts(true);
+	}
 
 //
 // make cvars consistant
@@ -2268,7 +2269,7 @@ static qbool SVVM_load_edict(prvm_prog_t *prog, prvm_edict_t *ent)
 static void SV_VM_Setup(void)
 {
 	prvm_prog_t *prog = SVVM_prog;
-	PRVM_Prog_Init(prog, &cmd_local);
+	PRVM_Prog_Init(prog, cmd_server);
 
 	// allocate the mempools
 	// TODO: move the magic numbers/constants into #defines [9/13/2006 Black]

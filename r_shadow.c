@@ -372,7 +372,7 @@ static void R_Shadow_SetShadowMode(void)
 	}
 
 	if(R_CompileShader_CheckStaticParms())
-		R_GLSL_Restart_f(&cmd_local);
+		R_GLSL_Restart_f(cmd_client);
 }
 
 qbool R_Shadow_ShadowMappingEnabled(void)
@@ -597,7 +597,7 @@ static void r_shadow_newmap(void)
 	if (r_editlights_sprcubemapnoshadowlight) { R_SkinFrame_MarkUsed(r_editlights_sprcubemapnoshadowlight); }
 	if (r_editlights_sprselection)            { R_SkinFrame_MarkUsed(r_editlights_sprselection); }
 	if (strncmp(cl.worldname, r_shadow_mapname, sizeof(r_shadow_mapname)))
-		R_Shadow_EditLights_Reload_f(&cmd_local);
+		R_Shadow_EditLights_Reload_f(cmd_client);
 }
 
 void R_Shadow_Init(void)
@@ -2530,7 +2530,7 @@ static void R_Shadow_BounceGrid_ConvertPixelsAndUpload(void)
 		}
 
 		if (!r_shadow_bouncegrid_state.createtexture)
-			R_UpdateTexture(r_shadow_bouncegrid_state.texture, pixelsbgra8, 0, 0, 0, resolution[0], resolution[1], resolution[2]*pixelbands);
+			R_UpdateTexture(r_shadow_bouncegrid_state.texture, pixelsbgra8, 0, 0, 0, resolution[0], resolution[1], resolution[2]*pixelbands, 0);
 		else
 			r_shadow_bouncegrid_state.texture = R_LoadTexture3D(r_shadow_texturepool, "bouncegrid", resolution[0], resolution[1], resolution[2]*pixelbands, pixelsbgra8, TEXTYPE_BGRA, TEXF_CLAMP | TEXF_ALPHA | TEXF_FORCELINEAR, 0, NULL);
 		break;
@@ -2581,7 +2581,7 @@ static void R_Shadow_BounceGrid_ConvertPixelsAndUpload(void)
 		}
 
 		if (!r_shadow_bouncegrid_state.createtexture)
-			R_UpdateTexture(r_shadow_bouncegrid_state.texture, (const unsigned char *)pixelsrgba16f, 0, 0, 0, resolution[0], resolution[1], resolution[2]*pixelbands);
+			R_UpdateTexture(r_shadow_bouncegrid_state.texture, (const unsigned char *)pixelsrgba16f, 0, 0, 0, resolution[0], resolution[1], resolution[2]*pixelbands, 0);
 		else
 			r_shadow_bouncegrid_state.texture = R_LoadTexture3D(r_shadow_texturepool, "bouncegrid", resolution[0], resolution[1], resolution[2]*pixelbands, (const unsigned char *)pixelsrgba16f, TEXTYPE_COLORBUFFER16F, TEXF_CLAMP | TEXF_ALPHA | TEXF_FORCELINEAR, 0, NULL);
 		break;
@@ -2590,7 +2590,7 @@ static void R_Shadow_BounceGrid_ConvertPixelsAndUpload(void)
 		pixelsrgba32f = highpixels;
 
 		if (!r_shadow_bouncegrid_state.createtexture)
-			R_UpdateTexture(r_shadow_bouncegrid_state.texture, (const unsigned char *)pixelsrgba32f, 0, 0, 0, resolution[0], resolution[1], resolution[2]*pixelbands);
+			R_UpdateTexture(r_shadow_bouncegrid_state.texture, (const unsigned char *)pixelsrgba32f, 0, 0, 0, resolution[0], resolution[1], resolution[2]*pixelbands, 0);
 		else
 			r_shadow_bouncegrid_state.texture = R_LoadTexture3D(r_shadow_texturepool, "bouncegrid", resolution[0], resolution[1], resolution[2]*pixelbands, (const unsigned char *)pixelsrgba32f, TEXTYPE_COLORBUFFER32F, TEXF_CLAMP | TEXF_ALPHA | TEXF_FORCELINEAR, 0, NULL);
 		break;
@@ -2954,7 +2954,7 @@ static void R_Shadow_RenderLighting_VisibleLighting(int texturenumsurfaces, cons
 static void R_Shadow_RenderLighting_Light_GLSL(int texturenumsurfaces, const msurface_t **texturesurfacelist, const float ambientcolor[3], const float diffusecolor[3], const float specularcolor[3])
 {
 	// ARB2 GLSL shader path (GFFX5200, Radeon 9500)
-	R_SetupShader_Surface(ambientcolor, diffusecolor, specularcolor, RSURFPASS_RTLIGHT, texturenumsurfaces, texturesurfacelist, NULL, false);
+	R_SetupShader_Surface(ambientcolor, diffusecolor, specularcolor, RSURFPASS_RTLIGHT, texturenumsurfaces, texturesurfacelist, NULL, false, false);
 	RSurf_DrawBatch();
 }
 
@@ -3376,7 +3376,7 @@ static void R_Shadow_DrawEntityShadow(entity_render_t *ent)
 	relativeshadowmaxs[0] = relativeshadoworigin[0] + relativeshadowradius;
 	relativeshadowmaxs[1] = relativeshadoworigin[1] + relativeshadowradius;
 	relativeshadowmaxs[2] = relativeshadoworigin[2] + relativeshadowradius;
-	ent->model->DrawShadowMap(r_shadow_shadowmapside, ent, relativeshadoworigin, NULL, relativeshadowradius, ent->model->nummodelsurfaces, ent->model->sortedmodelsurfaces, NULL, relativeshadowmins, relativeshadowmaxs);
+	ent->model->DrawShadowMap(r_shadow_shadowmapside, ent, relativeshadoworigin, NULL, relativeshadowradius, ent->model->submodelsurfaces_end - ent->model->submodelsurfaces_start, ent->model->modelsurfaces_sorted + ent->model->submodelsurfaces_start, NULL, relativeshadowmins, relativeshadowmaxs);
 	rsurface.entity = NULL; // used only by R_GetCurrentTexture and RSurf_ActiveModelEntity
 }
 
@@ -3415,7 +3415,7 @@ static void R_Shadow_DrawEntityLight(entity_render_t *ent)
 
 	R_Shadow_SetupEntityLight(ent);
 
-	model->DrawLight(ent, model->nummodelsurfaces, model->sortedmodelsurfaces, NULL);
+	model->DrawLight(ent, model->submodelsurfaces_end - model->submodelsurfaces_start, model->modelsurfaces_sorted + model->submodelsurfaces_start, NULL);
 
 	rsurface.entity = NULL; // used only by R_GetCurrentTexture and RSurf_ActiveModelEntity
 }
@@ -4431,7 +4431,7 @@ static void R_Shadow_DrawModelShadowMaps(void)
 		relativeshadowmaxs[1] = relativelightorigin[1] + r_shadows_throwdistance.value * fabs(relativelightdirection[1]) + radius * (fabs(relativeforward[1]) + fabs(relativeright[1]));
 		relativeshadowmaxs[2] = relativelightorigin[2] + r_shadows_throwdistance.value * fabs(relativelightdirection[2]) + radius * (fabs(relativeforward[2]) + fabs(relativeright[2]));
 		RSurf_ActiveModelEntity(ent, false, false, false);
-		ent->model->DrawShadowMap(0, ent, relativelightorigin, relativelightdirection, relativethrowdistance, ent->model->nummodelsurfaces, ent->model->sortedmodelsurfaces, NULL, relativeshadowmins, relativeshadowmaxs);
+		ent->model->DrawShadowMap(0, ent, relativelightorigin, relativelightdirection, relativethrowdistance, ent->model->submodelsurfaces_end - ent->model->submodelsurfaces_start, ent->model->modelsurfaces_sorted + ent->model->submodelsurfaces_start, NULL, relativeshadowmins, relativeshadowmaxs);
 		rsurface.entity = NULL; // used only by R_GetCurrentTexture and RSurf_ActiveModelEntity
 	}
 
@@ -5742,7 +5742,7 @@ static void R_Shadow_EditLights_EditAll_f(cmd_state_t *cmd)
 		if (!light)
 			continue;
 		R_Shadow_SelectLight(light);
-		R_Shadow_EditLights_Edit_f(&cmd_local);
+		R_Shadow_EditLights_Edit_f(cmd_client);
 	}
 	// return to old selected (to not mess editing once selection is locked)
 	R_Shadow_SelectLight(oldselected);
