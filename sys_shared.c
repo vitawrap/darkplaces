@@ -457,9 +457,13 @@ double Sys_DirtyTime(void)
 #endif
 }
 
-void Sys_Sleep(int microseconds)
+void Sys_Sleep(long nanoseconds)
 {
 	double t = 0;
+	long microseconds = nanoseconds / 1000L;
+	int milliseconds = microseconds / 1000;
+	int seconds = milliseconds / 1000;
+
 	if(sys_usenoclockbutbenchmark.integer)
 	{
 		if(microseconds)
@@ -477,13 +481,13 @@ void Sys_Sleep(int microseconds)
 	}
 	if(sys_supportsdlgetticks && sys_usesdldelay.integer)
 	{
-		Sys_SDL_Delay(microseconds / 1000);
+		Sys_SDL_Delay(milliseconds);
 	}
 #if HAVE_SELECT
 	else
 	{
 		struct timeval tv;
-		tv.tv_sec = microseconds / 1000000;
+		tv.tv_sec = seconds;
 		tv.tv_usec = microseconds % 1000000;
 		select(0, NULL, NULL, NULL, &tv);
 	}
@@ -495,12 +499,12 @@ void Sys_Sleep(int microseconds)
 #elif HAVE_Sleep
 	else
 	{
-		Sleep(microseconds / 1000);
+		Sleep(milliseconds);
 	}
 #else
 	else
 	{
-		Sys_SDL_Delay(microseconds / 1000);
+		Sys_SDL_Delay(milliseconds);
 	}
 #endif
 	if(sys_debugsleep.integer)

@@ -343,9 +343,7 @@ Runs all active servers
 static void Host_Init(void);
 double Host_Frame(double time)
 {
-	double cl_timer = 0;
-	double sv_timer = 0;
-	static double wait;
+	double cl_wait, sv_wait;
 
 	TaskQueue_Frame(false);
 
@@ -369,49 +367,45 @@ double Host_Frame(double time)
 
 //		R_TimeReport("console");
 
-	//Con_Printf("%6.0f %6.0f\n", cl_timer * 1000000.0, sv_timer * 1000000.0);
-
 	R_TimeReport("---");
 
-	sv_timer = SV_Frame(time);
-	cl_timer = CL_Frame(time);
+	sv_wait = -(SV_Frame(time));
+	cl_wait = -(CL_Frame(time));
+
+	//Con_Printf("%6.0f %6.0f\n", cl_wait * 1000000.0, sv_wait * 1000000.0);
 
 	Mem_CheckSentinelsGlobal();
 
+	if (host.restless)
+		return 0.0;
+
 	// if the accumulators haven't become positive yet, wait a while
 	if (cls.state == ca_dedicated)
-		wait = sv_timer * -1000000.0; // dedicated
+		return sv_wait; // dedicated
 	else if (!sv.active || svs.threaded)
-		wait = cl_timer * -1000000.0; // connected to server, main menu, or server is on different thread
+		return cl_wait; // connected to server, main menu, or server is on different thread
 	else
-		wait = max(cl_timer, sv_timer) * -1000000.0; // listen server or singleplayer
-
-	if (!host.restless && wait >= 1)
-		return wait;
-	else
-		return 0;
+		return min(cl_wait, sv_wait); // listen server or singleplayer
 }
 
-static inline void Host_Sleep(double time)
+static inline void Host_Sleep(long nanoseconds)
 {
 	double time0, delta;
 
 	if(host_maxwait.value <= 0)
-		time = min(time, 1000000.0);
+		nanoseconds = min(nanoseconds, 1000000000L);
 	else
-		time = min(time, host_maxwait.value * 1000.0);
-	if(time < 1)
-		time = 1; // because we cast to int
+		nanoseconds = min(nanoseconds, (long)(host_maxwait.value * 1000000.0));
 
 	time0 = Sys_DirtyTime();
 	if (sv_checkforpacketsduringsleep.integer && !sys_usenoclockbutbenchmark.integer && !svs.threaded) {
-		LHNET_SleepUntilPacket_Microseconds((int)time);
+		LHNET_SleepUntilPacket(nanoseconds);
 		if (cls.state != ca_dedicated)
 			NetConn_ClientFrame(); // helps server browser get good ping values
 		// TODO can we do the same for ServerFrame? Probably not.
 	}
 	else
-		Sys_Sleep((int)time);
+		Sys_Sleep(nanoseconds);
 	delta = Sys_DirtyTime() - time0;
 	if (delta < 0 || delta >= 1800) 
 		delta = 0;
@@ -443,7 +437,8 @@ static inline double Host_UpdateTime (double newtime, double oldtime)
 
 void Host_Main(void)
 {
-	double time, newtime, oldtime, sleeptime;
+	double time, newtime, oldtime;
+	long sleeptime;
 
 	Host_Init(); // Start!
 
@@ -463,7 +458,7 @@ void Host_Main(void)
 		newtime = host.dirtytime = Sys_DirtyTime();
 		host.realtime += time = Host_UpdateTime(newtime, oldtime);
 
-		sleeptime = Host_Frame(time);
+		sleeptime = Host_Frame(time) * 1000000000.0;
 		oldtime = newtime;
 
 		if (sleeptime)

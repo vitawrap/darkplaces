@@ -154,7 +154,7 @@ static void *attempt_malloc(size_t size)
 		base = (void *)malloc(size);
 		if (base)
 			return base;
-		Sys_Sleep(1000);
+		Sys_Sleep(1000000L);
 	}
 	return NULL;
 }

@@ -96,7 +96,7 @@ static int TaskQueue_ThreadFunc(void *d)
 			break;
 		sleepcounter++;
 		if (sleepcounter >= THREADSLEEPCOUNT)
-			Sys_Sleep(1000);
+			Sys_Sleep(1000000L);
 		sleepcounter = 0;
 	}
 	return 0;

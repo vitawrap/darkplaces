@@ -240,7 +240,7 @@ void Sys_ProvideSelfFD (void);
 char *Sys_ConsoleInput (void);
 
 /// called to yield for a little bit so as not to hog cpu when paused or debugging
-void Sys_Sleep(int microseconds);
+void Sys_Sleep(long nanoseconds);
 
 /// Perform Key_Event () callbacks until the input que is empty
 void Sys_SendKeyEvents (void);

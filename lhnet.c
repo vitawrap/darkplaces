@@ -840,7 +840,7 @@ static const char *LHNETPRIVATE_StrError(void)
 #endif
 }
 
-inline void LHNET_SleepUntilPacket_Microseconds(int microseconds)
+inline void LHNET_SleepUntilPacket(long nanoseconds)
 {
 #ifdef FD_SET
 	fd_set fdreadset;
@@ -862,11 +862,11 @@ inline void LHNET_SleepUntilPacket_Microseconds(int microseconds)
 #endif
 		}
 	}
-	tv.tv_sec = microseconds / 1000000;
-	tv.tv_usec = microseconds % 1000000;
+	tv.tv_sec = nanoseconds / 1000000000L;
+	tv.tv_usec = (nanoseconds / 1000L) % 1000000L;
 	select(lastfd + 1, &fdreadset, NULL, NULL, &tv);
 #else
-	Sys_Sleep(microseconds);
+	Sys_Sleep(nanoseconds);
 #endif
 }
 

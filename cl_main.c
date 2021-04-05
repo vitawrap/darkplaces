@@ -2751,7 +2751,6 @@ double CL_Frame (double time)
 	static double clframetime;
 	static double cl_timer = 0;
 	static double time1 = 0, time2 = 0, time3 = 0;
-	static double wait;
 	int pass1, pass2, pass3;
 
 	CL_VM_PreventInformationLeaks();
@@ -2793,10 +2792,9 @@ double CL_Frame (double time)
 #endif
 		{
 			clframetime = cl.realframetime = max(cl_timer, 1.0 / cl_maxfps.value);
-			// when running slow, we need to sleep to keep input responsive
-			wait = bound(0, cl_maxfps_alwayssleep.value * 1000, 100000);
-			if (wait > 0)
-				Sys_Sleep((int)wait);
+			// when running slow, we may need to sleep to keep input responsive
+			if (cl_maxfps_alwayssleep.value > 0.0)
+				Sys_Sleep(bound(0L, (long)(cl_maxfps_alwayssleep.value * 1000000.0), 10000000L));
 		}
 		else if (!vid_activewindow && cl_maxidlefps.value >= 1 && !cls.timedemo)
 			clframetime = cl.realframetime = max(cl_timer, 1.0 / cl_maxidlefps.value);
