@@ -483,8 +483,8 @@ void Sys_Sleep(long nanoseconds)
 	{
 		Sys_SDL_Delay(milliseconds);
 	}
-#if HAVE_SELECT
 	else
+#if HAVE_SELECT
 	{
 		struct timeval tv;
 		tv.tv_sec = seconds;
@@ -492,17 +492,14 @@ void Sys_Sleep(long nanoseconds)
 		select(0, NULL, NULL, NULL, &tv);
 	}
 #elif HAVE_USLEEP
-	else
 	{
 		usleep(microseconds);
 	}
 #elif HAVE_Sleep
-	else
 	{
 		Sleep(milliseconds);
 	}
 #else
-	else
 	{
 		Sys_SDL_Delay(milliseconds);
 	}
