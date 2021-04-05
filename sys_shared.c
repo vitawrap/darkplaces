@@ -301,6 +301,10 @@ void* Sys_GetProcAddress (dllhandle_t handle, const char* name)
 # define HAVE_USLEEP 1
 #endif
 
+#if (_POSIX_VERSION >= 200809L)
+	#define HAVE_NANOSLEEP 1
+#endif
+
 // these are referenced elsewhere
 cvar_t sys_usenoclockbutbenchmark = {CF_CLIENT | CF_SERVER | CF_ARCHIVE, "sys_usenoclockbutbenchmark", "0", "don't use ANY real timing, and simulate a clock (for benchmarking); the game then runs as fast as possible. Run a QC mod with bots that does some stuff, then does a quit at the end, to benchmark a server. NEVER do this on a public server."};
 cvar_t sys_libdir = {CF_READONLY | CF_CLIENT | CF_SERVER, "sys_libdir", "", "Default engine library directory"};
@@ -484,7 +488,14 @@ void Sys_Sleep(long nanoseconds)
 		Sys_SDL_Delay(milliseconds);
 	}
 	else
-#if HAVE_SELECT
+#if HAVE_NANOSLEEP
+	{
+		struct timespec ts;
+		ts.tv_sec = seconds;
+		ts.tv_nsec = nanoseconds % 1000000000;
+		nanosleep(&ts, NULL);
+	}
+#elif HAVE_SELECT
 	{
 		struct timeval tv;
 		tv.tv_sec = seconds;
