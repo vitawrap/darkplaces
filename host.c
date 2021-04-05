@@ -388,7 +388,7 @@ double Host_Frame(double time)
 		return min(cl_wait, sv_wait); // listen server or singleplayer
 }
 
-static inline void Host_Sleep(long nanoseconds)
+inline double Host_Sleep(long nanoseconds)
 {
 	double time0, delta;
 
@@ -408,10 +408,9 @@ static inline void Host_Sleep(long nanoseconds)
 		Sys_Sleep(nanoseconds);
 	delta = Sys_DirtyTime() - time0;
 	if (delta < 0 || delta >= 1800) 
-		delta = 0;
-	host.sleeptime += delta;
-//			R_TimeReport("sleep");
-	return;
+		return 0.0;
+	else
+		return delta;
 }
 
 // Cloudwalk: Most overpowered function declaration...
@@ -463,7 +462,8 @@ void Host_Main(void)
 
 		if (sleeptime)
 		{
-			Host_Sleep(sleeptime);
+			host.sleeptime += Host_Sleep(sleeptime);
+//			R_TimeReport("sleep");
 			continue;
 		}
 

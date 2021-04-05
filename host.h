@@ -45,6 +45,7 @@ extern host_t host;
 void Host_InitCommands(void);
 void Host_Main(void);
 double Host_Frame(double time);
+double Host_Sleep(long nanoseconds);
 void Host_Shutdown(void);
 void Host_Error(const char *error, ...) DP_FUNC_PRINTF(1) DP_FUNC_NORETURN;
 void Host_LockSession(void);

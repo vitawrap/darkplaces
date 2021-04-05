@@ -2653,7 +2653,7 @@ static int SV_ThreadFunc(void *voiddata)
 	qbool playing = false;
 	double sv_timer = 0;
 	double sv_deltarealtime, sv_oldrealtime, sv_realtime;
-	double wait;
+	long wait;
 	int i;
 	char vabuf[1024];
 	sv_realtime = Sys_DirtyTime();
@@ -2715,18 +2715,7 @@ static int SV_ThreadFunc(void *voiddata)
 		wait = sv_timer * -1000000000.0;
 		if (wait >= 1)
 		{
-			double time0, delta;
-			SV_UnlockThreadMutex(); // don't keep mutex locked while sleeping
-			if (host_maxwait.value <= 0)
-				wait = min(wait, 1000000000.0);
-			else
-				wait = min(wait, host_maxwait.value * 1000000.0);
-			if(wait < 1)
-				wait = 1; // because we cast to int
-			time0 = Sys_DirtyTime();
-			Sys_Sleep((long)wait);
-			delta = Sys_DirtyTime() - time0;if (delta < 0 || delta >= 1800) delta = 0;
-			svs.perf_acc_sleeptime += delta;
+			svs.perf_acc_sleeptime += Host_Sleep(wait);
 			continue;
 		}
 
