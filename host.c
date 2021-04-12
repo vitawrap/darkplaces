@@ -390,7 +390,7 @@ double Host_Frame(double time)
 
 inline double Host_Sleep(long nanoseconds)
 {
-	double time0, delta;
+	double delta, time0;
 
 	if(host_maxwait.value <= 0)
 		nanoseconds = min(nanoseconds, 1000000000L);
