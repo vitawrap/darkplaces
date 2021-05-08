@@ -3062,8 +3062,18 @@ static void SV_Physics_ClientEntity_PostThink(prvm_edict_t *ent)
 	// synchronous physics
 	if (host_client->clmovement_inputtimeout > sv.frametime)
 		host_client->clmovement_inputtimeout -= sv.frametime;
-	else
-		host_client->clmovement_inputtimeout = 0;
+	else if (host_client->clmovement_inputtimeout > 0)
+		host_client->clmovement_inputtimeout = -666; // sync phys next frame if no moves by then
+	else if (host_client->clmovement_inputtimeout == -666)
+	{
+		// bones_was_here: sync physics ran this frame due to expired inputtimeout,
+		// so advance cmd.time to prevent warping caused by running sync AND async physics
+		if (sv_clmovement_inputtimeout_strict.integer)
+			host_client->cmd.time = min(host_client->cmd.time + sv.frametime, sv.time);
+
+		// show that this cl_movement client has a connection problem
+		host_client->ping += sv.frametime;
+	}
 }
 
 static void SV_Physics_ClientEntity(prvm_edict_t *ent)
