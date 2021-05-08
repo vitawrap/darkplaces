@@ -418,6 +418,7 @@ extern cvar_t sv_allowdownloads_inarchive;
 extern cvar_t sv_areagrid_mingridsize;
 extern cvar_t sv_checkforpacketsduringsleep;
 extern cvar_t sv_clmovement_enable;
+extern cvar_t sv_clmovement_maxping;
 extern cvar_t sv_clmovement_minping;
 extern cvar_t sv_clmovement_minping_disabletime;
 extern cvar_t sv_clmovement_inputtimeout;

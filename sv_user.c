@@ -788,9 +788,14 @@ static void SV_ExecuteClientMoves(void)
 #if DEBUGMOVES
 	Con_Printf("SV_ExecuteClientMoves: read %i moves at sv.time %f\n", sv_numreadmoves, (float)sv.time);
 #endif
+
+	// update ping time
+	host_client->ping = max(sv_readmoves[sv_numreadmoves-1].receivetime - sv_readmoves[sv_numreadmoves-1].time, 0);
+
 	// disable clientside movement prediction in some cases
-	if (ceil(max(sv_readmoves[sv_numreadmoves-1].receivetime - sv_readmoves[sv_numreadmoves-1].time, 0) * 1000.0) < sv_clmovement_minping.integer)
+	if (host_client->ping * 1000.0 < sv_clmovement_minping.value || host_client->ping * 1000.0 > sv_clmovement_maxping.value)
 		host_client->clmovement_disabletimeout = host.realtime + sv_clmovement_minping_disabletime.value / 1000.0;
+
 	// several conditions govern whether clientside movement prediction is allowed
 	if (sv_readmoves[sv_numreadmoves-1].sequence && sv_clmovement_enable.integer && sv_clmovement_inputtimeout.value > 0 && host_client->clmovement_disabletimeout <= host.realtime && (PRVM_serveredictfloat(host_client->edict, disableclientprediction) == -1 || (PRVM_serveredictfloat(host_client->edict, movetype) == MOVETYPE_WALK && (!PRVM_serveredictfloat(host_client->edict, disableclientprediction)))))
 	{
@@ -808,11 +813,10 @@ static void SV_ExecuteClientMoves(void)
 				Con_Printf("%smove #%u %ims (%ims) %i %i '%i %i %i' '%i %i %i'\n", (move->time - host_client->cmd.time) > sv.frametime * 1.01 ? "^1" : "^2", move->sequence, (int)floor((move->time - host_client->cmd.time) * 1000.0 + 0.5), (int)floor(move->time * 1000.0 + 0.5), move->impulse, move->buttons, (int)move->viewangles[0], (int)move->viewangles[1], (int)move->viewangles[2], (int)move->forwardmove, (int)move->sidemove, (int)move->upmove);
 #endif
 				// this is a new move
-				move->time = bound(sv.time - 1, move->time, sv.time); // prevent slowhack/speedhack combos
-				move->time = max(move->time, host_client->cmd.time); // prevent backstepping of time
+				// prevent backstepping of time and slowhack/speedhack combos
+				move->time = bound(host_client->cmd.time, move->time, sv.time);
 				// bones_was_here: limit moveframetime to a multiple of sv.frametime to match inputtimeout behaviour
 				moveframetime = min(move->time - host_client->cmd.time, min(0.1, sys_ticrate.value > 0.0 && sv.frametime > 0.0 ? sv.frametime * ceil(sv_clmovement_inputtimeout.value / sv.frametime) : sv_clmovement_inputtimeout.value));
-
 
 				// discard (treat like lost) moves with too low distance from
 				// the previous one to prevent hacks using float inaccuracy
@@ -885,8 +889,6 @@ static void SV_ExecuteClientMoves(void)
 		host_client->movesequence = 0;
 		// make sure that normal physics takes over immediately
 		host_client->clmovement_inputtimeout = 0;
-		// update ping time
-		host_client->ping = host_client->cmd.receivetime - sv_readmoves[sv_numreadmoves-1].time;
 	}
 }
 
