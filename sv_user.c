@@ -794,6 +794,10 @@ static void SV_ExecuteClientMoves(void)
 	// several conditions govern whether clientside movement prediction is allowed
 	if (sv_readmoves[sv_numreadmoves-1].sequence && sv_clmovement_enable.integer && sv_clmovement_inputtimeout.value > 0 && host_client->clmovement_disabletimeout <= host.realtime && (PRVM_serveredictfloat(host_client->edict, disableclientprediction) == -1 || (PRVM_serveredictfloat(host_client->edict, movetype) == MOVETYPE_WALK && (!PRVM_serveredictfloat(host_client->edict, disableclientprediction)))))
 	{
+		// bones_was_here: match SV_Physics_ClientEntity_PostThink behaviour when possible
+		// by using smallest multiple of sv.frametime >= inputtimeout
+		float inputtimeout = min(0.1, sys_ticrate.value > 0.0 && sv.frametime > 0.0 ? sv.frametime * ceil(sv_clmovement_inputtimeout.value / sv.frametime) : sv_clmovement_inputtimeout.value);
+
 		// process the moves in order and ignore old ones
 		// but always trust the latest move
 		// (this deals with bogus initial move sequences after level change,
@@ -810,9 +814,9 @@ static void SV_ExecuteClientMoves(void)
 				// this is a new move
 				move->time = bound(sv.time - 1, move->time, sv.time); // prevent slowhack/speedhack combos
 				move->time = max(move->time, host_client->cmd.time); // prevent backstepping of time
-				// bones_was_here: limit moveframetime to a multiple of sv.frametime to match inputtimeout behaviour
-				moveframetime = min(move->time - host_client->cmd.time, min(0.1, sys_ticrate.value > 0.0 && sv.frametime > 0.0 ? sv.frametime * ceil(sv_clmovement_inputtimeout.value / sv.frametime) : sv_clmovement_inputtimeout.value));
-
+				// bones_was_here: limit total moveframetime for all moves executed this frame
+				host_client->cmd.time = max(host_client->cmd.time, sv_readmoves[sv_numreadmoves-1].time - inputtimeout);
+				moveframetime = move->time - host_client->cmd.time;
 
 				// discard (treat like lost) moves with too low distance from
 				// the previous one to prevent hacks using float inaccuracy
@@ -828,7 +832,25 @@ static void SV_ExecuteClientMoves(void)
 					if(host_client->movesequence)
 						if(move->sequence > host_client->movesequence)
 							host_client->movement_count[(move->sequence) % NETGRAPH_PACKETS] = -1;
-					continue;
+
+					// bones_was_here: previously everything was discarded by a continue;
+					// which caused reliability problems with impulses and buttons
+					// it should be sufficient to zero out player movement
+					move->forwardmove = move->sidemove = move->upmove = 0.0f;
+					// and set the minimum allowed frametime just to be safe
+					moveframetime = 0.0005;
+
+					// during PL we need to advance cmd.time to prevent excessively long moveframetimes
+					// if that's the reason we are zeroing out movement, we need to counter that here
+					// since we want the next move executed with a correct moveframetime (on the next frame)
+					// and we need to allow for client ping increases
+					if (sv_clmovement_inputtimeout_strict.integer && host_client->clmovement_inputtimeout <= 0.0f && moveindex == sv_numreadmoves - 1)
+						move->time -= sv.frametime;
+				}
+				else
+				{
+					// only reset inputtimeout if we didn't zero out the movement
+					host_client->clmovement_inputtimeout = min(0.1, sv_clmovement_inputtimeout.value);
 				}
 
 				//Con_Printf("movesequence = %i (%i lost), moveframetime = %f\n", move->sequence, move->sequence ? move->sequence - host_client->movesequence - 1 : 0, moveframetime);
@@ -856,7 +878,6 @@ static void SV_ExecuteClientMoves(void)
 				SV_Physics_ClientMove();
 				sv.frametime = oldframetime2;
 				PRVM_serverglobalfloat(frametime) = oldframetime;
-				host_client->clmovement_inputtimeout = min(0.1, sv_clmovement_inputtimeout.value);
 			}
 		}
 	}
@@ -876,7 +897,14 @@ static void SV_ExecuteClientMoves(void)
 		}
 		// now copy the new move
 		host_client->cmd = sv_readmoves[sv_numreadmoves-1];
-		host_client->cmd.time = max(host_client->cmd.time, sv.time);
+
+		// should we put some minimum on cmd.time ?
+		// maybe using inputtimeout (even tho the cvar is supposed to be async only...)
+		// dont think we need it cos its only to prevent async moves being too early which is already handled in async processing above
+
+		// this line doesnt seem necessary for preventing a speed hack
+		// and causes valid moves to be dropped at every ready restart or round reset
+//		host_client->cmd.time = max(host_client->cmd.time, sv.time);
 			// physics will run up to sv.time, so allow no predicted moves
 			// before that otherwise, there is a speedhack by turning
 			// prediction on and off repeatedly on client side because the

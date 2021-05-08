@@ -3015,6 +3015,14 @@ static void SV_Physics_ClientEntity_PreThink(prvm_edict_t *ent)
 	{
 		SV_PlayerPhysics();
 		//host_client->cmd.time = max(host_client->cmd.time, sv.time);
+
+		if (host_client->movesequence)
+		{
+			host_client->ping += sv.frametime;
+
+			if (sv_clmovement_inputtimeout_strict.integer)
+				host_client->cmd.time += sv.frametime;
+		}
 	}
 
 	// make sure the velocity is still sane (not a NaN)

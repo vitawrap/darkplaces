@@ -421,6 +421,7 @@ extern cvar_t sv_clmovement_enable;
 extern cvar_t sv_clmovement_minping;
 extern cvar_t sv_clmovement_minping_disabletime;
 extern cvar_t sv_clmovement_inputtimeout;
+extern cvar_t sv_clmovement_inputtimeout_strict;
 extern cvar_t sv_clmovement_maxnetfps;
 extern cvar_t sv_cullentities_nevercullbmodels;
 extern cvar_t sv_cullentities_pvs;
