@@ -77,6 +77,7 @@ cvar_t sv_clmovement_enable = {CF_SERVER, "sv_clmovement_enable", "1", "whether 
 cvar_t sv_clmovement_minping = {CF_SERVER, "sv_clmovement_minping", "0", "if client ping is below this time in milliseconds, then their ability to use cl_movement prediction is disabled for a while (as they don't need it)"};
 cvar_t sv_clmovement_minping_disabletime = {CF_SERVER, "sv_clmovement_minping_disabletime", "1000", "when client falls below minping, disable their prediction for this many milliseconds (should be at least 1000 or else their prediction may turn on/off frequently)"};
 cvar_t sv_clmovement_inputtimeout = {CF_SERVER, "sv_clmovement_inputtimeout", "0.1", "when a client does not send input for this many seconds (max 0.1), force them to move anyway (unlike QuakeWorld)"};
+cvar_t sv_clmovement_inputtimeout_strict = {CF_SERVER, "sv_clmovement_inputtimeout_strict", "1", "prevent lagaporting (in other players' perspectives) and speeding up (in lagging player's perspective) when inputtimeout is exceeded"};
 cvar_t sv_cullentities_nevercullbmodels = {CF_SERVER, "sv_cullentities_nevercullbmodels", "0", "if enabled the clients are always notified of moving doors and lifts and other submodels of world (warning: eats a lot of network bandwidth on some levels!)"};
 cvar_t sv_cullentities_pvs = {CF_SERVER, "sv_cullentities_pvs", "1", "fast but loose culling of hidden entities"};
 cvar_t sv_cullentities_stats = {CF_SERVER, "sv_cullentities_stats", "0", "displays stats on network entities culled by various methods for each client"};
@@ -575,6 +576,7 @@ void SV_Init (void)
 	Cvar_RegisterVariable (&sv_clmovement_minping);
 	Cvar_RegisterVariable (&sv_clmovement_minping_disabletime);
 	Cvar_RegisterVariable (&sv_clmovement_inputtimeout);
+	Cvar_RegisterVariable (&sv_clmovement_inputtimeout_strict);
 	Cvar_RegisterVariable (&sv_cullentities_nevercullbmodels);
 	Cvar_RegisterVariable (&sv_cullentities_pvs);
 	Cvar_RegisterVariable (&sv_cullentities_stats);
@@ -2464,7 +2466,10 @@ static void SV_CheckTimeouts(void)
 	// never timeout loopback connections
 	for (i = (host_isclient.integer ? 1 : 0), host_client = &svs.clients[i]; i < svs.maxclients; i++, host_client++)
 	{
-		if (host_client->netconnection && host.realtime > host_client->netconnection->timeout)
+		if (!host_client->netconnection)
+			continue;
+
+		if (host.realtime > host_client->netconnection->timeout)
 		{
 			if (host_client->begun)
 				SV_BroadcastPrintf("Client \"%s\" connection timed out\n", host_client->name);
@@ -2472,6 +2477,13 @@ static void SV_CheckTimeouts(void)
 				Con_Printf("Client \"%s\" connection timed out\n", host_client->name);
 
 			SV_DropClient(false);
+		}
+		else
+		{
+			// bones_was_here: if sync physics ran this frame due to expired inputtimeout,
+			// advance cmd.time to prevent warping caused by running sync AND async physics
+			if (host_client->clmovement_inputtimeout == -666 && sv_clmovement_inputtimeout_strict.integer)
+				host_client->cmd.time = min(host_client->cmd.time + sv.frametime, sv.time);
 		}
 	}
 }

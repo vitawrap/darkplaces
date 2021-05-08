@@ -3062,8 +3062,10 @@ static void SV_Physics_ClientEntity_PostThink(prvm_edict_t *ent)
 	// synchronous physics
 	if (host_client->clmovement_inputtimeout > sv.frametime)
 		host_client->clmovement_inputtimeout -= sv.frametime;
-	else
-		host_client->clmovement_inputtimeout = 0;
+	else if (host_client->clmovement_inputtimeout > 0)
+		host_client->clmovement_inputtimeout = -333; // run sync physics next frame if no move has arrived
+	else if (host_client->clmovement_inputtimeout == -333) // sync physics ran this frame due to timeout,
+		host_client->clmovement_inputtimeout = -666; // so advance cmd.time in SV_CheckTimeouts()
 }
 
 static void SV_Physics_ClientEntity(prvm_edict_t *ent)
