@@ -2484,6 +2484,10 @@ static void SV_CheckTimeouts(void)
 			// advance cmd.time to prevent warping caused by running sync AND async physics
 			if (host_client->clmovement_inputtimeout == -666 && sv_clmovement_inputtimeout_strict.integer)
 				host_client->cmd.time = min(host_client->cmd.time + sv.frametime, sv.time);
+
+			// let other players know when someone has a connection problem
+			if (host.realtime - host_client->netconnection->lastMessageTime >= bound(sv.frametime, sv_clmovement_inputtimeout.value, 0.1))
+				host_client->ping += sv.frametime;
 		}
 	}
 }
