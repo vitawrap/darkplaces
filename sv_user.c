@@ -829,9 +829,18 @@ static void SV_ExecuteClientMoves(void)
 					// count the move as LOST if we don't
 					// execute it but it has higher
 					// sequence count
-					if(host_client->movesequence)
-						if(move->sequence > host_client->movesequence)
-							host_client->movement_count[(move->sequence) % NETGRAPH_PACKETS] = -1;
+					if(host_client->movesequence && move->sequence > host_client->movesequence)
+					{
+						host_client->movement_count[(move->sequence) % NETGRAPH_PACKETS] = -1;
+
+						// bones_was_here: if we are discarding the move due to inputtimeout,
+						// and it's the last received and has the highest sequence count,
+						// set cmd.time to allow for persistent latency increases,
+						// and to calculate the moveframetime the client expects next frame
+						if(host_client->clmovement_inputtimeout == -666 && moveindex == sv_numreadmoves - 1 && sv_clmovement_inputtimeout_strict.integer < 2)
+							host_client->cmd.time = move->time - sv.frametime;
+					}
+
 					continue;
 				}
 
