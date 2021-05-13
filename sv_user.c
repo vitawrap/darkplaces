@@ -829,11 +829,27 @@ static void SV_ExecuteClientMoves(void)
 					// count the move as LOST if we don't
 					// execute it but it has higher
 					// sequence count
-					if(host_client->movesequence)
-						if(move->sequence > host_client->movesequence)
-							host_client->movement_count[(move->sequence) % NETGRAPH_PACKETS] = -1;
-					continue;
+					if (host_client->movesequence && move->sequence > host_client->movesequence)
+					{
+						host_client->movement_count[(move->sequence) % NETGRAPH_PACKETS] = -1;
+
+						// bones_was_here: if we are discarding the move due to inputtimeout,
+						// and it's the last received and has the highest sequence count,
+						// set cmd.time to allow for persistent latency increases,
+						// and to calculate the moveframetime the client expects next frame
+						// NB: sv.frametime will be added in SV_Physics_ClientEntity_PostThink
+						if (host_client->clmovement_inputtimeout == -1337 && moveindex == sv_numreadmoves - 1)
+							move->time -= sv.frametime;
+					}
+
+					// bones_was_here: previously just a continue; discarded everything, even impulses and buttons
+					// but it should be sufficient to just zero out player movement
+					move->forwardmove = 0.0;
+					move->sidemove = 0.0;
+					move->upmove = 0.0;
 				}
+				else
+					host_client->clmovement_inputtimeout = min(0.1, sv_clmovement_inputtimeout.value);
 
 				//Con_Printf("movesequence = %i (%i lost), moveframetime = %f\n", move->sequence, move->sequence ? move->sequence - host_client->movesequence - 1 : 0, moveframetime);
 				host_client->cmd = *move;
@@ -860,7 +876,6 @@ static void SV_ExecuteClientMoves(void)
 				SV_Physics_ClientMove();
 				sv.frametime = oldframetime2;
 				PRVM_serverglobalfloat(frametime) = oldframetime;
-				host_client->clmovement_inputtimeout = min(0.1, sv_clmovement_inputtimeout.value);
 			}
 		}
 	}
