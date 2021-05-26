@@ -3293,7 +3293,7 @@ static void CL_NetworkTimeReceived(double newtime)
 	}
 	else if (cls.protocol != PROTOCOL_QUAKEWORLD)
 	{
-		double timehigh;
+		double timehigh = 0; // hush compiler warning
 		cl.mtime[1] = max(cl.mtime[1], cl.mtime[0] - 0.1);
 
 		if (developer_extra.integer && vid_activewindow)
@@ -3529,11 +3529,8 @@ void CL_ParseServerMessage(void)
 				if (cls.demonum != -1)
 					CL_NextDemo();
 				else
-				{
-					Con_Printf("Server disconnected\n");
 					CL_Disconnect();
-				}
-				return;
+				break;
 
 			case qw_svc_print:
 				i = MSG_ReadByte(&cl_message);
@@ -3910,12 +3907,9 @@ void CL_ParseServerMessage(void)
 
 			case svc_disconnect:
 				if (cls.demonum != -1)
-					CL_NextDemo ();
+					CL_NextDemo();
 				else
-				{
-					Con_Printf ("Server disconnected\n");
-					CL_Disconnect ();
-				}
+					CL_Disconnect();
 				break;
 
 			case svc_print:
