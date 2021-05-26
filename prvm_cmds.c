@@ -61,7 +61,7 @@ void VM_CheckEmptyString(prvm_prog_t *prog, const char *s)
 qbool PRVM_ConsoleCommand (prvm_prog_t *prog, const char *text, int *func, qbool preserve_self, int curself, double ptime, qbool prog_loaded, const char *error_message)
 {
 	int restorevm_tempstringsbuf_cursize;
-	int save_self;
+	int save_self = 0; // hush compiler warning
 	qbool r = false;
 
 	if(!prog_loaded)
@@ -1696,7 +1696,7 @@ void VM_registercvar(prvm_prog_t *prog)
 		return;
 
 // check for overlap with a command
-	if (Cmd_Exists(cmd_local, name) || Cmd_Exists(cmd_local, name))
+	if (Cmd_Exists(cmd_local, name))
 	{
 		VM_Warning(prog, "VM_registercvar: %s is a command\n", name);
 		return;
