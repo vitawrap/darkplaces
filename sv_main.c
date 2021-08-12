@@ -77,6 +77,9 @@ cvar_t sv_clmovement_enable = {CF_SERVER, "sv_clmovement_enable", "1", "whether 
 cvar_t sv_clmovement_minping = {CF_SERVER, "sv_clmovement_minping", "0", "if client ping is below this time in milliseconds, then their ability to use cl_movement prediction is disabled for a while (as they don't need it)"};
 cvar_t sv_clmovement_minping_disabletime = {CF_SERVER, "sv_clmovement_minping_disabletime", "1000", "when client falls below minping, disable their prediction for this many milliseconds (should be at least 1000 or else their prediction may turn on/off frequently)"};
 cvar_t sv_clmovement_inputtimeout = {CF_SERVER, "sv_clmovement_inputtimeout", "0.1", "when a client does not send input for this many seconds (max 0.1), force them to move anyway (unlike QuakeWorld)"};
+cvar_t sv_clmovement_inputtimeout_correct = {CF_SERVER, "sv_clmovement_inputtimeout_correct", "0", "FOO"};
+cvar_t sv_clmovement_buffer = {CF_SERVER, "sv_clmovement_buffer", "0", "bar"};
+cvar_t sv_clmovement_noisy = {CF_SERVER, "sv_clmovement_noisy", "1", "TEST"};
 cvar_t sv_cullentities_nevercullbmodels = {CF_SERVER, "sv_cullentities_nevercullbmodels", "0", "if enabled the clients are always notified of moving doors and lifts and other submodels of world (warning: eats a lot of network bandwidth on some levels!)"};
 cvar_t sv_cullentities_pvs = {CF_SERVER, "sv_cullentities_pvs", "1", "fast but loose culling of hidden entities"};
 cvar_t sv_cullentities_stats = {CF_SERVER, "sv_cullentities_stats", "0", "displays stats on network entities culled by various methods for each client"};
@@ -553,6 +556,9 @@ void SV_Init (void)
 	Cvar_RegisterVariable (&sv_clmovement_minping);
 	Cvar_RegisterVariable (&sv_clmovement_minping_disabletime);
 	Cvar_RegisterVariable (&sv_clmovement_inputtimeout);
+	Cvar_RegisterVariable (&sv_clmovement_inputtimeout_correct);
+	Cvar_RegisterVariable (&sv_clmovement_buffer);
+	Cvar_RegisterVariable (&sv_clmovement_noisy);
 	Cvar_RegisterVariable (&sv_cullentities_nevercullbmodels);
 	Cvar_RegisterVariable (&sv_cullentities_pvs);
 	Cvar_RegisterVariable (&sv_cullentities_stats);
@@ -888,6 +894,9 @@ void SV_SendServerinfo (client_t *client)
 
 	// clear movement info until client enters the new level properly
 	memset(&client->cmd, 0, sizeof(client->cmd));
+	memset(&client->mvbuf, 0, sizeof(client->mvbuf));
+	client->mvbuf_r = client->mvbuf_w = 0;
+	client->clmovement_inputtimeout_accum = 0.0f;
 	client->movesequence = 0;
 	client->movement_highestsequence_seen = 0;
 	memset(&client->movement_count, 0, sizeof(client->movement_count));
@@ -2525,7 +2534,6 @@ double SV_Frame(double time)
 		if (sv.active)
 		{
 			NetConn_ServerFrame();
-			SV_CheckTimeouts();
 		}
 	}
 
@@ -2557,6 +2565,8 @@ double SV_Frame(double time)
 		double advancetime, aborttime = 0;
 		float offset;
 		prvm_prog_t *prog = SVVM_prog;
+
+		SV_CheckTimeouts();
 
 		// run the world state
 		// don't allow simulation to run too fast or too slow or logic glitches can occur
@@ -2617,6 +2627,11 @@ double SV_Frame(double time)
 
 		// send all messages to the clients
 		SV_SendClientMessages();
+
+		// execute moves that were deferred to the "next" frame
+		// sv.time advanced and client updates were sent, since these moves were saved
+		if (sv_clmovement_buffer.integer)
+			SV_ExecuteBufferedAsyncMoves();
 
 		if (sv.paused == 1 && host.realtime > sv.pausedstart && sv.pausedstart > 0) {
 			prog->globals.fp[OFS_PARM0] = host.realtime - sv.pausedstart;

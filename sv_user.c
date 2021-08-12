@@ -772,13 +772,81 @@ static void SV_ReadClientMove (void)
 	}
 }
 
+static void SV_ExecuteAsyncMove(usercmd_t *move)
+{
+	prvm_prog_t *prog = SVVM_prog;
+
+	double qcframetime = PRVM_serverglobalfloat(frametime);
+	double svframetime = sv.frametime;
+
+	host_client->cmd = *move;
+	host_client->movesequence = move->sequence;
+
+	if (sv_clmovement_buffer.integer)
+	{
+		// TODO can this break when paused? should we use sys_ticrate.value instead or just check sv.frametime?
+		// FIXME if the client has exactly half the server's framerate and never fluctuates at allow
+		// the amount of buffered moves never decreases
+		// happens when enabling buffer during a match with a client already running exactly half hz
+		// hack: could do a FLT_MIN (or bigger) offset so its doing slightly more frametime on the first one ?
+		// or just do enough extra on the first one that subsequent ones are == sv.frametime ?
+		if (move->frametime >= 2 * sv.frametime && sv.frametime > 0.0)
+		{
+//			Con_Printf("Splitting a move in %d! ", (int)floor(move->frametime / sv.frametime));
+			host_client->cmd.frametime /= floor(move->frametime / sv.frametime);
+			move->frametime -= host_client->cmd.frametime;
+//			Con_Printf("shortened frametime: %f stored remainder: %f\n", host_client->cmd.frametime, move->frametime);
+		}
+		else
+			host_client->mvbuf_r++;
+
+		host_client->frametime_accum += host_client->cmd.frametime;
+	}
+
+	// if using prediction, we need to perform moves when packets are
+	// received, even if multiple occur in one frame
+	// (they can't go beyond the current time so there is no cheat issue
+	//  with this approach, and if they don't send input for a while they
+	//  start moving anyway, so the longest 'lagaport' possible is
+	//  determined by the sv_clmovement_inputtimeout cvar)
+
+	// update ping time for qc to see while executing this move
+	host_client->ping = host_client->cmd.receivetime - host_client->cmd.time;
+	// the server and qc frametime values must be changed temporarily
+	PRVM_serverglobalfloat(frametime) = sv.frametime = host_client->cmd.frametime;
+	// if move is more than 50ms, split it into two moves (this matches QWSV behavior and the client prediction)
+	if (sv.frametime > 0.05)
+	{
+		PRVM_serverglobalfloat(frametime) = sv.frametime = host_client->cmd.frametime * 0.5;
+		SV_Physics_ClientMove();
+	}
+	SV_Physics_ClientMove();
+	sv.frametime = svframetime;
+	PRVM_serverglobalfloat(frametime) = qcframetime;
+	host_client->clmovement_inputtimeout = min(0.1, sv_clmovement_inputtimeout.value);
+}
+
+inline void SV_ExecuteBufferedAsyncMoves(void)
+{
+	unsigned char i = 0;
+	for (host_client = &svs.clients[0]; i < svs.maxclients; i++, host_client++)
+	{
+//		if (host_client->begun)
+//			Con_Printf("Buffered moves: %d\n", (unsigned char)(host_client->mvbuf_w - host_client->mvbuf_r));
+
+		host_client->frametime_accum = 0.0;
+		while (host_client->frametime_accum < sv.frametime && host_client->mvbuf_w != host_client->mvbuf_r)
+			SV_ExecuteAsyncMove(&host_client->mvbuf[MVBUF_MASK(host_client->mvbuf_r)]);
+	}
+}
+
 static void SV_ExecuteClientMoves(void)
 {
 	prvm_prog_t *prog = SVVM_prog;
 	int moveindex;
-	double moveframetime;
-	double oldframetime;
-	double oldframetime2;
+//	double moveframetime;
+//	double oldframetime;
+//	double oldframetime2;
 
 	if (sv_numreadmoves < 1)
 		return;
@@ -788,8 +856,12 @@ static void SV_ExecuteClientMoves(void)
 #if DEBUGMOVES
 	Con_Printf("SV_ExecuteClientMoves: read %i moves at sv.time %f\n", sv_numreadmoves, (float)sv.time);
 #endif
+
+	// update ping time
+	host_client->ping = max(sv_readmoves[sv_numreadmoves-1].receivetime - sv_readmoves[sv_numreadmoves-1].time, 0);
+
 	// disable clientside movement prediction in some cases
-	if (ceil(max(sv_readmoves[sv_numreadmoves-1].receivetime - sv_readmoves[sv_numreadmoves-1].time, 0) * 1000.0) < sv_clmovement_minping.integer)
+	if (host_client->ping * 1000.0 < sv_clmovement_minping.value || host_client->ping > 0.3)
 		host_client->clmovement_disabletimeout = host.realtime + sv_clmovement_minping_disabletime.value / 1000.0;
 	// several conditions govern whether clientside movement prediction is allowed
 	if (sv_readmoves[sv_numreadmoves-1].sequence && sv_clmovement_enable.integer && sv_clmovement_inputtimeout.value > 0 && host_client->clmovement_disabletimeout <= host.realtime && (PRVM_serveredictfloat(host_client->edict, disableclientprediction) == -1 || (PRVM_serveredictfloat(host_client->edict, movetype) == MOVETYPE_WALK && (!PRVM_serveredictfloat(host_client->edict, disableclientprediction)))))
@@ -804,15 +876,53 @@ static void SV_ExecuteClientMoves(void)
 			usercmd_t *move = sv_readmoves + moveindex;
 			if (host_client->movesequence < move->sequence || moveindex == sv_numreadmoves - 1)
 			{
+				// this is a new move
+
+/*				usercmd_t *prevmove;
+				// TODO is it correct to check host_client->movesequence here ?!?
+				// movesequence set means prev executed move was async
+				// but not necessarily that buffered mode was enabled
+				// could compare movesequence to most recently read buffered move's sequence ?
+				if (sv_clmovement_buffer.integer && host_client->movesequence)
+					prevmove = &host_client->mvbuf[MVBUF_MASK(host_client->mvbuf_w - 1)];
+				else
+					prevmove = &host_client->cmd; */
 #if DEBUGMOVES
 				Con_Printf("%smove #%u %ims (%ims) %i %i '%i %i %i' '%i %i %i'\n", (move->time - host_client->cmd.time) > sv.frametime * 1.01 ? "^1" : "^2", move->sequence, (int)floor((move->time - host_client->cmd.time) * 1000.0 + 0.5), (int)floor(move->time * 1000.0 + 0.5), move->impulse, move->buttons, (int)move->viewangles[0], (int)move->viewangles[1], (int)move->viewangles[2], (int)move->forwardmove, (int)move->sidemove, (int)move->upmove);
 #endif
-				// this is a new move
-				move->time = bound(sv.time - 1, move->time, sv.time); // prevent slowhack/speedhack combos
-				move->time = max(move->time, host_client->cmd.time); // prevent backstepping of time
-				// bones_was_here: limit moveframetime to a multiple of sv.frametime to match inputtimeout behaviour
-				moveframetime = min(move->time - host_client->cmd.time, min(0.1, sys_ticrate.value > 0.0 && sv.frametime > 0.0 ? sv.frametime * ceil(sv_clmovement_inputtimeout.value / sv.frametime) : sv_clmovement_inputtimeout.value));
+//				if (move->time > sv.time)
+//					Con_Printf("move->time exceeded sv.time by %f\n", move->time - sv.time);
+//				if (move->time < oldmove->time)
+//					Con_Printf("time stepped back by %f\n", oldmove->time - move->time);
 
+				// not required as we limit to sv.time + sv.frametime in SV_ReadClientMove and fall back to sync phys if too old
+//				move->time = bound(sv.time - 1, move->time, sv.time); // prevent slowhack/speedhack combos
+				// also not required: if move->time was older than oldmove->time
+				// move->frametime will be < 0 and the move will be discarded
+//				move->time = max(move->time, oldmove->time); // prevent backstepping of time
+
+				// FIXME frametime of next move to arrive will be different to client's pred if we have prevented backstepping
+
+				move->frametime = move->time - max(host_client->cmd.time, host_client->mvbuf[MVBUF_MASK(host_client->mvbuf_w - 1)].time);
+
+//				if (move->frametime >= 0.05)
+//					Con_Printf("Long move frametime: %f\n", move->frametime);
+
+				if (sv_clmovement_inputtimeout_correct.integer && host_client->clmovement_inputtimeout_accum)
+				{
+					if (move->frametime > host_client->clmovement_inputtimeout_accum)
+					{
+//						Con_Printf("Shortening move frametime after %f inputtimeout, was %f, now %f\n", host_client->clmovement_inputtimeout_accum, move->frametime, move->frametime - host_client->clmovement_inputtimeout_accum);
+						move->frametime -= host_client->clmovement_inputtimeout_accum;
+						host_client->clmovement_inputtimeout_accum = 0.0f;
+					}
+					else
+					{
+//						Con_Printf("Shortening move frametime after %f inputtimeout, was %f, now 0.0\n", host_client->clmovement_inputtimeout_accum, move->frametime);
+						host_client->clmovement_inputtimeout_accum -= move->frametime;
+						move->frametime = 0.0;
+					}
+				}
 
 				// discard (treat like lost) moves with too low distance from
 				// the previous one to prevent hacks using float inaccuracy
@@ -820,18 +930,47 @@ static void SV_ExecuteClientMoves(void)
 				// this should also apply if a move cannot get
 				// executed because it came too late and
 				// already was performed serverside
-				if(moveframetime < 0.0005)
+				if(move->frametime < 0.0005)
 				{
 					// count the move as LOST if we don't
 					// execute it but it has higher
 					// sequence count
 					if(host_client->movesequence)
-						if(move->sequence > host_client->movesequence)
+						if(move->sequence > host_client->movesequence && sv_clmovement_noisy.integer)
 							host_client->movement_count[(move->sequence) % NETGRAPH_PACKETS] = -1;
+//					Con_Printf("Discarding move with frametime %f\n", move->frametime);
 					continue;
+					// TODO can we somehow apply only the impulses and buttons?
+					// there's code for accumulating them into the next move to arrive
+					// currently this only happens for explicit sync physics as it relies on the move being copied to host_client->cmd
 				}
 
+				// bones_was_here: limit moveframetime to a multiple of sv.frametime to match inputtimeout behaviour
+				if (!sv_clmovement_inputtimeout_correct.integer)
+					move->frametime = min(move->frametime, min(0.1, sys_ticrate.value > 0.0 && sv.frametime > 0.0 ? sv.frametime * ceil(sv_clmovement_inputtimeout.value / sv.frametime) : sv_clmovement_inputtimeout.value));
+				else
+					move->frametime = min(move->frametime, 0.1);
+
 				//Con_Printf("movesequence = %i (%i lost), moveframetime = %f\n", move->sequence, move->sequence ? move->sequence - host_client->movesequence - 1 : 0, moveframetime);
+
+				if (sv_clmovement_buffer.integer)
+				{
+					// if the buffer is full we are about to overwrite the oldest move
+					// log it as lost and increment the read index
+					if ((unsigned char)(host_client->mvbuf_w - host_client->mvbuf_r) >= MVBUF_SIZE)
+						host_client->movement_count[(host_client->mvbuf[MVBUF_MASK(host_client->mvbuf_r++)].sequence) % NETGRAPH_PACKETS] = -1;
+
+					// store the move and increment the write index
+					host_client->mvbuf[MVBUF_MASK(host_client->mvbuf_w++)] = *move;
+
+					// if possible, execute the move now
+					if (host_client->frametime_accum < sv.frametime)
+						SV_ExecuteAsyncMove(&host_client->mvbuf[MVBUF_MASK(host_client->mvbuf_r)]);
+				}
+				else
+					SV_ExecuteAsyncMove(move);
+
+/*
 				host_client->cmd = *move;
 				host_client->movesequence = move->sequence;
 
@@ -857,6 +996,7 @@ static void SV_ExecuteClientMoves(void)
 				sv.frametime = oldframetime2;
 				PRVM_serverglobalfloat(frametime) = oldframetime;
 				host_client->clmovement_inputtimeout = min(0.1, sv_clmovement_inputtimeout.value);
+*/
 			}
 		}
 	}
@@ -876,7 +1016,7 @@ static void SV_ExecuteClientMoves(void)
 		}
 		// now copy the new move
 		host_client->cmd = sv_readmoves[sv_numreadmoves-1];
-		host_client->cmd.time = max(host_client->cmd.time, sv.time);
+//		host_client->cmd.time = max(host_client->cmd.time, sv.time);
 			// physics will run up to sv.time, so allow no predicted moves
 			// before that otherwise, there is a speedhack by turning
 			// prediction on and off repeatedly on client side because the
@@ -885,8 +1025,10 @@ static void SV_ExecuteClientMoves(void)
 		host_client->movesequence = 0;
 		// make sure that normal physics takes over immediately
 		host_client->clmovement_inputtimeout = 0;
+		// clear the async move buffer
+		host_client->mvbuf_r = host_client->mvbuf_w = 0;
 		// update ping time
-		host_client->ping = host_client->cmd.receivetime - sv_readmoves[sv_numreadmoves-1].time;
+//		host_client->ping = host_client->cmd.receivetime - sv_readmoves[sv_numreadmoves-1].time;
 	}
 }
 

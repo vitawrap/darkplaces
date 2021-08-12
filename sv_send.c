@@ -1716,6 +1716,9 @@ void SV_SendClientMessages(void)
 			continue;
 		}
 
+		if (sv_clmovement_buffer.integer && host_client->movesequence && host_client->mvbuf_w != host_client->mvbuf_r && host_client->movesequence == host_client->mvbuf[MVBUF_MASK(host_client->mvbuf_r)].sequence)
+			continue;
+
 		if (!prepared)
 		{
 			prepared = true;

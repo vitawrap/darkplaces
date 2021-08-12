@@ -211,11 +211,16 @@ typedef struct client_s
 	/// communications handle
 	netconn_t *netconnection;
 
+	/// movement
 	unsigned int movesequence;
 	signed char movement_count[NETGRAPH_PACKETS];
 	unsigned int movement_highestsequence_seen; // not the same as movesequence if prediction is off
-	/// movement
-	usercmd_t cmd;
+#define MVBUF_SIZE 8 // must be a power of 2!
+#define MVBUF_MASK(index) ((index) & (MVBUF_SIZE - 1))
+	usercmd_t cmd, mvbuf[MVBUF_SIZE]; // sv_clmovement_buffer
+	unsigned char mvbuf_r;            // ring buffer read index
+	unsigned char mvbuf_w;            // ring buffer write index
+	double frametime_accum;
 	/// intended motion calced from cmd
 	vec3_t wishdir;
 
@@ -229,6 +234,8 @@ typedef struct client_s
 	double clmovement_disabletimeout;
 	/// this is used by sv_clmovement_inputtimeout code
 	float clmovement_inputtimeout;
+	/// counts how much synchronous physics moveframetime occurred during an inputtimeout
+	float clmovement_inputtimeout_accum;
 
 /// spawn parms are carried from level to level
 	prvm_vec_t spawn_parms[NUM_SPAWN_PARMS];
@@ -421,7 +428,10 @@ extern cvar_t sv_clmovement_enable;
 extern cvar_t sv_clmovement_minping;
 extern cvar_t sv_clmovement_minping_disabletime;
 extern cvar_t sv_clmovement_inputtimeout;
+extern cvar_t sv_clmovement_inputtimeout_correct;
 extern cvar_t sv_clmovement_maxnetfps;
+extern cvar_t sv_clmovement_buffer;
+extern cvar_t sv_clmovement_noisy;
 extern cvar_t sv_cullentities_nevercullbmodels;
 extern cvar_t sv_cullentities_pvs;
 extern cvar_t sv_cullentities_stats;
@@ -522,6 +532,8 @@ void SV_ClientCommands(const char *fmt, ...) DP_FUNC_PRINTF(1);
 void SV_SendClientMessages(void);
 
 void SV_ReadClientMessage(void);
+
+void SV_ExecuteBufferedAsyncMoves(void);
 
 // precachemode values:
 // 0 = fail if not precached,
