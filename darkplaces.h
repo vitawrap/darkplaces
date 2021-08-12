@@ -39,6 +39,7 @@ extern char engineversion[128];
 #include <stdio.h>
 #include <stdlib.h>
 #include <limits.h>
+#include <float.h>
 
 #include "sys.h"
 #include "qtypes.h"

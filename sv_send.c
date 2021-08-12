@@ -1716,6 +1716,10 @@ void SV_SendClientMessages(void)
 			continue;
 		}
 
+//		if (sv_clmovement_buffer.integer && sv_clmovement_buffer_split.integer && host_client->mbuf_w != host_client->mbuf_r && host_client->movesequence && host_client->movesequence == host_client->mbuf[MBUF_MASK(host_client->mbuf_r)].sequence)
+		if (sv_clmovement_buffer.integer && sv_clmovement_buffer_split.integer && host_client->mbuf_w != host_client->mbuf_r && host_client->mbuf[MBUF_MASK(host_client->mbuf_r)].msec == 1)
+			continue;
+
 		if (!prepared)
 		{
 			prepared = true;

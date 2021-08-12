@@ -744,7 +744,7 @@ static void SV_Status_f(cmd_state_t *cmd)
 	print ("players:  %i active (%i max)\n\n", players, svs.maxclients);
 
 	if (in == 1)
-		print ("^2IP                                             %%pl ping  time   frags  no   name\n");
+		print ("^2IP                                             %%pl ping buf  time   frags  no   name\n");
 	else if (in == 2)
 		print ("^5IP                                              no   name\n");
 
@@ -820,7 +820,7 @@ static void SV_Status_f(cmd_state_t *cmd)
 		}
 		else if (in == 1) // extended layout
 		{
-			print ("%s%-47s %2i %4i %2i:%02i:%02i %4i  #%-3u ^7%s\n", k%2 ? "^3" : "^7", ip, packetloss, ping, hours, minutes, seconds, frags, i+1, client->name);
+			print ("%s%-47s %2i %4i %3u %2i:%02i:%02i %4i  #%-3u ^7%s\n", k%2 ? "^3" : "^7", ip, packetloss, ping, client->mbuf_s, hours, minutes, seconds, frags, i+1, client->name);
 		}
 		else if (in == 2) // reduced layout
 		{
