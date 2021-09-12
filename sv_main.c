@@ -208,6 +208,11 @@ cvar_t sv_mapformat_is_quake3 = {CF_SERVER, "sv_mapformat_is_quake3", "0", "indi
 
 cvar_t sv_writepicture_quality = {CF_SERVER | CF_ARCHIVE, "sv_writepicture_quality", "10", "WritePicture quality offset (higher means better quality, but slower)"};
 
+cvar_t g_domination = {CF_SERVER, "g_domination", "0", "hacky workaround"};
+cvar_t g_freezetag = {CF_SERVER, "g_freezetag", "0", "hacky workaround"};
+cvar_t g_keepaway = {CF_SERVER, "g_keepaway", "0", "hacky workaround"};
+cvar_t g_keyhunt = {CF_SERVER, "g_keyhunt", "0", "hacky workaround"};
+
 server_t sv;
 server_static_t svs;
 
@@ -513,6 +518,15 @@ void SV_Init (void)
 	Cmd_AddCommand(CF_SHARED, "sv_areastats", SV_AreaStats_f, "prints statistics on entity culling during collision traces");
 	Cmd_AddCommand(CF_CLIENT | CF_SERVER_FROM_CLIENT, "sv_startdownload", SV_StartDownload_f, "begins sending a file to the client (network protocol use only)");
 	Cmd_AddCommand(CF_CLIENT | CF_SERVER_FROM_CLIENT, "download", SV_Download_f, "downloads a specified file from the server");
+
+	Cvar_RegisterVariable (&g_domination);
+	Cvar_RegisterVariable (&g_freezetag);
+	Cvar_RegisterVariable (&g_keepaway);
+	Cvar_RegisterVariable (&g_keyhunt);
+	Cvar_RegisterVirtual (&g_domination, "g_dom");
+	Cvar_RegisterVirtual (&g_freezetag, "g_ft");
+	Cvar_RegisterVirtual (&g_keepaway, "g_ka");
+	Cvar_RegisterVirtual (&g_keyhunt, "g_kh");
 
 	Cvar_RegisterVariable (&sv_disablenotify);
 	Cvar_RegisterVariable (&coop);
