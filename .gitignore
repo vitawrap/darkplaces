@@ -26,3 +26,14 @@ Makefile.win
 /.vs
 /build
 /.cache
+
+# exclude xiph libs for some reason
+libogg*/
+libvorbis*/
+
+# exclude VS garbage and compiled files
+Debug-darkplaces-*/
+packages/*
+*.pdb
+*.exp
+darkplaces*.lib
